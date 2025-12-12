@@ -1,5 +1,6 @@
 import logging
 import os
+import warnings
 
 from assertpy import assert_that
 from pyspark.sql import DataFrame
@@ -252,3 +253,11 @@ class TestTabFileMapper:
 			assert_that ( triples, f"Expected {test_id}.{key} in the result" )\
 			.extracting ( 'id', 'key', 'value' )\
 			.contains ( ( test_id, key, val ) )
+
+
+	def test_infer_schema ( self, spark_session ):
+		warnings.warn ( "TODO: implement me!" )
+
+
+	def test_inconsistent_mappers_on_same_row ( self, spark_session ):
+		warnings.warn ( "TODO: implement me!" )
