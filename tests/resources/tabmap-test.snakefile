@@ -21,7 +21,9 @@ rule map_gene_tsv:
 	run:
 		"""
 		This is the ugly version. Typically, you'll want to isolate this into 
-		a separate .py, which would receive tsv/parquet as params
+		a separate .py, which would receive tsv/parquet as params.
+
+		TODO: add a rule with that style.
 		
 		"""
 		tb_mapper = TabFileMapper (
