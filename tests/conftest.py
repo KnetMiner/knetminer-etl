@@ -1,11 +1,9 @@
 import logging
 import os
 
-from brandizpyes.logging import logger_config
 import pytest
-
+from brandizpyes.logging import logger_config
 from pyspark.sql import SparkSession
-
 
 """
 Pytest configuration file, which the framework picks up at startup.

@@ -2,16 +2,17 @@
 Tabular/CSV mapping tools for KnetMiner ETLs
 
 """
-from email import header
 import logging
 from typing import Any, Dict
 
-from pyspark.sql import SparkSession, DataFrame
+from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import explode, udf
-from pyspark.sql.types import ArrayType, StringType, StructField, StructType, DataType
+from pyspark.sql.types import (ArrayType, DataType, StringType, StructField,
+                               StructType)
 
 from ketl import (ConstantPropertyMapper, GraphTriple, IdentityValueConverter,
                   Mapper, PreSerializers, ValueConverter)
+from ketl.spark_utils import DataFrameCheckpointManager
 
 log = logging.getLogger ( __name__ )
 
@@ -244,11 +245,23 @@ class TabFileMapper:
 		)
 		self.spark_options = spark_options
 
-	def map ( self, spark: SparkSession, file_path: str ) -> DataFrame:
+	def map ( self, spark: SparkSession, file_path: str, out_path: str | None = None ) -> DataFrame:
 		"""
 		Does the job and returns a Spark data frame representing the mapped triples.
 
 		As said above, this is essentially a wrapper of :meth:`ketl.tabmap.SparkDataFrameMapper.map`.
+
+		## Parameters:
+
+		- spark: it needs a Spark session to work with. TODO: an session initialiser to be use in workflow
+		  descriptors such as Snakefiles.
+
+		- file_path: the path to the input tabular file (CSV/TSV).
+
+		- out_path: if given, a :class:`DataFrameCheckpointManager` is used to save the mapped data frame
+		  to a parquet file, as an intermediate that allows for building incremental workflows in Snakemake or
+			similar frameworks. 
+
 
 		## Notes
 
@@ -258,11 +271,13 @@ class TabFileMapper:
 			cast the original columns to the desired types. If a column mapper doesn't have this attribute set,
 			we leave the original column untouched (ie, loaded by Spark with its defaults).
 
-			**WARNING**: it's possible to map the same column header more than once, with multiple column mappers having
+		* **WARNING**: it's possible to map the same column header more than once, with multiple column mappers having
 			the same `column` attribute. However, in this case, the `spark_data_type` must be consistent and we enforce
 			it.
 		"""
 
+		# Fix the options, override defaults if requested
+		#
 		opts = TabFileMapper.DEFAULT_SPARK_OPTIONS.copy ()
 		if self.spark_options:
 			opts.update ( self.spark_options )
@@ -270,6 +285,7 @@ class TabFileMapper:
 		if not opts.get ( "header", True ):
 			raise ValueError ( "TabFileMapper: doesn't support files without headers yet" )
 		
+		log.info ( f"Mapping tab file \"{file_path}\"" )
 		df = spark.read.options ( **opts ).csv ( file_path )
 
 		# Work out an explicit schema.
@@ -305,5 +321,15 @@ class TabFileMapper:
 
 		df = df.withColumns ( df_col_map )
 
+		# And eventually do the mapping
 		triple_df = self.data_frame_mapper.map ( df )
+
+		# Save to file if required
+		if out_path:
+			# Remember, we can't log much more than this, since most of Spark is declarative and things
+			# really happen only upon an actual action like this
+			#
+			log.info ( f"Saving mapped tab file to \"{out_path}\"" )
+			DataFrameCheckpointManager.save_intermediate ( triple_df, out_path )
+		
 		return triple_df

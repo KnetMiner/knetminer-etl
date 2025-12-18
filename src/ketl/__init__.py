@@ -11,9 +11,11 @@ from enum import StrEnum
 from typing import Any, Callable, TextIO
 
 from brandizpyes.ioutils import dump_output
-from pyspark.sql import DataFrame
-from pyspark.sql.types import DataType
+from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
+from pyspark.sql.types import DataType
+
+from ketl.spark_utils import DataFrameCheckpointManager
 
 
 class GraphProperty:
@@ -322,28 +324,37 @@ class ConstantPropertyMapper ( Mapper ):
 		return cls ( GraphTriple.TYPE_KEY, type_value, IdentityValueConverter () )
 
 
-def triples_2_pg_df( triples_df: DataFrame, triples_type: PGElementType ) -> DataFrame:
+def triples_2_pg_df ( 
+	triples_df_or_path: DataFrame | str,
+	triples_type: PGElementType,
+	spark: SparkSession | None = None,
+	out_path: str | None = None
+) -> DataFrame:
 	"""
 	Converts a DataFrame of triples (ie, with the columns 'id', 'key') into a DataFrame reflecting the PG-Format.
 	
-	Args:
-		triples_df (DataFrame): The input DataFrame with the triples.
+	## Parameters:
+	:param triples_df_or_path: The input DataFrame with the triples, or the path to a (Parquet) file where to
+	load it from. When a path is given, `spark` must be provided too. 
 
-		triples_type (PGElementType): The type of elements represented by the triples (nodes or edges).
+	:param triples_type (PGElementType): The type of elements represented by the triples (nodes or edges).
 
-	Returns:
-		A data frame reflecting the structure of PG-Format, ie, with the columns:
+	:param spark: when `triples_df_or_path` is a path, the Spark session used to load the Parquet file 
+	(mandatory param in that case).
+		
+	## Returns:
+	A data frame reflecting the structure of PG-Format, ie, with the columns:
 
-		- type (string): equals to `triples_type`
-		- id (string): from triples_df.id
-		- labels (string array): an array, populated with the merge from triples_df.key == :py:attr:`ketl.GraphProperty.TYPE_KEY` values
-		- from (string), to (string): present when triples_type is `PGElementType.EDGE`, and values taken from 
-			triples_df.key == :py:attr:`ketl.GraphProperty.FROM_KEY`|:py:attr:`ketl.GraphProperty.TO_KEY`. 
-			An error is raised if these are missing or there are multiple values for any set of triples 
-			sharing an 'id'.
-		- properties: a dictionary with all the other properties, with the map values being all lists of unique values
-			(internally collected as sets), and all values still being string representations/serializations of
-			the actual values. These are unserialised by :func:`ketl.pg_df_2_pgjsonl`.
+	- type (string): equals to `triples_type`
+	- id (string): from triples_df.id
+	- labels (string array): an array, populated with the merge from triples_df.key == :py:attr:`ketl.GraphProperty.TYPE_KEY` values
+	- from (string), to (string): present when triples_type is `PGElementType.EDGE`, and values taken from 
+		triples_df.key == :py:attr:`ketl.GraphProperty.FROM_KEY`|:py:attr:`ketl.GraphProperty.TO_KEY`. 
+		An error is raised if these are missing or there are multiple values for any set of triples 
+		sharing an 'id'.
+	- properties: a dictionary with all the other properties, with the map values being all lists of unique values
+		(internally collected as sets), and all values still being string representations/serializations of
+		the actual values. These are unserialised by :func:`ketl.pg_df_2_pgjsonl`.
 	"""
 
 	# Sanity checks
@@ -351,6 +362,8 @@ def triples_2_pg_df( triples_df: DataFrame, triples_type: PGElementType ) -> Dat
 		raise ValueError ( f"triples_2_pg_df(): invalid triples_type: {triples_type}" )
 
 	# The DF that collects the node labels/types
+	triples_df = DataFrameCheckpointManager.load_intermediate ( triples_df_or_path, spark )
+
 	type_df = triples_df.filter ( F.col ( "key" ) == GraphProperty.TYPE_KEY )
 	type_labels_df = type_df.groupBy ( "id" ).agg ( F.collect_set ( "value" ).alias ( "labels" ) )
 
@@ -411,22 +424,32 @@ def triples_2_pg_df( triples_df: DataFrame, triples_type: PGElementType ) -> Dat
 	# - #labels > 0
 	# - from/to present if EDGE, and not null
 
-	# Eventually! (Remember, this should be all lazy, actual actions will start upon DF consumption)
+	# Save if requested
+	if out_path:
+		DataFrameCheckpointManager.save_intermediate ( result_df, out_path )
+
+	# Eventually!
 	return result_df
 
 
 def pg_df_2_pg_jsonl ( 
-	pg_df: DataFrame,
+	pg_df_or_path: DataFrame | str,
+	spark: SparkSession | None = None,
 	out_path: str | TextIO | None = None,
-	value_converters: dict[str, ValueConverter] = None 
+	value_converters: dict[str, ValueConverter] | None = None 
 ) -> str | None:
 	"""
 	Writes a DataFrame in the JSONL/PG format to a file if `out_path` is provided.
 
 	Args:
-		pg_df (DataFrame): The input DataFrame in PG-Format (see :func:`ketl.triples_2_pg_df`).
+		pg_df_or_path: when a DataFrame, the input DF in PG-Format (see :func:`ketl.triples_2_pg_df`).
+		When a string, the path to a Parquet file storing the same kind of data frame, which is loaded
+		through `spark`.
 
-		out_path (str | TextIO | None): has the same semantics of the corresponding parameter passed to :func:`ketl.dump_output`, that is:
+		spark: when `pg_df_or_path` is a path, the Spark session used to load the Parquet file. So, it 
+		is mandatory in that case.
+
+		out_path: has the same semantics of the corresponding parameter passed to :func:`ketl.dump_output`, that is:
 		writes to a file path, or a file-like object, or to a to-be-returned string buffer.
 
 		value_converters (dict[str, ValueConverter], optional): A dictionary of value converters, to be used
@@ -441,7 +464,7 @@ def pg_df_2_pg_jsonl (
 
 	def writer ( fh: TextIO ):
 
-		for row in pg_df.toLocalIterator ():
+		for row in pg_df_or_path.toLocalIterator ():
 			# Unserialize property values
 			properties = {}
 			default_converter = JSONBasedValueConverter ()
@@ -461,5 +484,8 @@ def pg_df_2_pg_jsonl (
 
 			fh.write ( json.dumps ( pg_elem ) + "\n" )
 	
+	pg_df_or_path = DataFrameCheckpointManager.load_intermediate ( pg_df_or_path, spark )
+
 	if not value_converters: value_converters = {}
 	return dump_output ( writer, out_path )
+

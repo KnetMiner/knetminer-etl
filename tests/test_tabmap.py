@@ -2,10 +2,10 @@ import logging
 import os
 import warnings
 
+import pytest
 from assertpy import assert_that
 from pyspark.sql import DataFrame
 from pyspark.sql.types import IntegerType
-import pytest
 
 from ketl import ConstantPropertyMapper, GraphTriple
 from ketl.spark_utils import assertDataFrameEqualX

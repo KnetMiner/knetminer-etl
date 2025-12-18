@@ -218,3 +218,5 @@ logs/
 *.orig
 
 /.project # MeGit, based on Eclipse.
+
+.snakemake

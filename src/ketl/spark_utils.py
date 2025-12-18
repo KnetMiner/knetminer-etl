@@ -68,13 +68,34 @@ class DataFrameCheckpointManager:
 
 
 	@staticmethod
-	def load_intermediate ( spark: SparkSession, path: str ) -> DataFrame:
+	def load_intermediate ( path_or_df: str | DataFrame, spark: SparkSession ) -> DataFrame:
 		"""
 		Loads a dataframe which was saved as an intermediate by :meth:`save_intermediate`.
+
+		## Parameters:
+
+		:param path_or_df: the path where the DataFrame was saved, or just a DF. In the latter 
+		case, we just return the DF, and this option is here for components that take their input
+		from a data frame. That is, they can easily use this helper to start from a path instead.
+
+		:param spark: the Spark session to use to load the DF from. This is mandatory when 
+		`path_or_df` is a path.
+
 		"""
-		log.info ( f"Loading intermediate DataFrame from {path}" )
-		df = spark.read.parquet ( path )
+		if isinstance ( path_or_df, DataFrame ):
+			log.debug ( f"load_intermediate() got a DataFrame as input, returning it" )
+			return path_or_df
+		
+		if not spark:
+			raise ValueError ( 
+				"DataFrameCheckpointManager.load_intermediate(): a SparkSession is required "
+				"when loading from a path." 
+			)
+
+		log.info ( f"Loading intermediate DataFrame from {path_or_df}" )
+		df = spark.read.parquet ( path_or_df )		
 		log.info ( f"DataFrame loaded" )
+
 		return df
 
 

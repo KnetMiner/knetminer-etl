@@ -2,9 +2,9 @@ import json
 import logging
 import pprint
 
+import pytest
 from assertpy import assert_that
 from pyspark.sql import SparkSession
-import pytest
 
 from ketl import (ConstantPropertyMapper, GraphProperty, GraphTriple,
                   JSONBasedValueConverter, PGElementType, pg_df_2_pg_jsonl,

@@ -34,7 +34,7 @@ def test_checkpoint_manager ():
 		"The checkpoint file exists" 
 	).exists ()
 	
-	loaded_df = DataFrameCheckpointManager.load_intermediate ( spark, ckpt_path )
+	loaded_df = DataFrameCheckpointManager.load_intermediate ( ckpt_path, spark )
 
 	# And now check
 
@@ -52,6 +52,7 @@ def test_checkpoint_manager ():
 		.is_equal_to ( 1 )
 
 	spark.stop()
+
 
 @pytest.mark.parametrize (
 	ids = [ "reduce", "increase" ],
@@ -105,7 +106,7 @@ def test_checkpoint_manager_repartition ( n_original_partitions: int, n_induced_
 		.appName ( "test" )\
 		.getOrCreate()
 	
-	loaded_df = DataFrameCheckpointManager.load_intermediate ( spark, ckpt_path )
+	loaded_df = DataFrameCheckpointManager.load_intermediate ( ckpt_path, spark )
 
 	loaded_tuples = set( tuple(row) for row in loaded_df.collect() )
 	test_tuples = set( tuple(row) for row in test_data )
