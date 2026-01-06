@@ -2,8 +2,9 @@
 Tabular/CSV mapping tools for KnetMiner ETLs
 
 """
+from abc import abstractmethod
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, TypeVar
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import explode, udf
@@ -11,12 +12,239 @@ from pyspark.sql.types import (ArrayType, DataType, StringType, StructField,
                                StructType)
 
 from ketl import (ConstantPropertyMapper, GraphTriple, IdentityValueConverter,
-                  Mapper, PreSerializers, ValueConverter)
+                  Mapper, PreSerializers, PropertyMapperMixin, ValueConverter)
 from ketl.spark_utils import DataFrameCheckpointManager
 
 log = logging.getLogger ( __name__ )
 
-class ColumnValueMapper ( Mapper ):
+
+class RowValueMapper ( Mapper ):
+	"""
+	Row-oriented value mapper.
+
+	Maps a row to a value, based on one or more column values.
+	"""
+	def __init__ ( 
+		self,
+		column_ids: list [ str ],
+		value_converter: ValueConverter | None = None,
+		pre_serializers: PreSerializers | None = None,
+		spark_data_type: DataType | None = None
+	):
+		"""
+		## Parameters
+
+		- column_ids: the list of column IDs that this mapper depends on. This is necessary for components
+		  like :class:`ketl.tabmap.SparkDataFrameMapper`, which need to know which columns to select from 
+			an input DataFrame.
+		
+		- value_converter, pre_serializers, spark_data_type: see :class:`ketl.Mapper`.
+		"""
+		super().__init__ ( value_converter, pre_serializers, spark_data_type )
+		self.column_ids = column_ids
+
+	@abstractmethod
+	def value ( self, row_dict: dict [ str, Any ] ) -> str | None:
+		pass
+
+	
+	@classmethod
+	def from_extractor ( 
+		cls,
+		extractor: callable [ dict [ str, Any ], Any ],
+		column_ids: list [ str ],
+		value_converter: ValueConverter | None = None,
+		pre_serializers: PreSerializers | None = None,
+		spark_data_type: DataType | None = None
+	) -> RowValueMapper:
+		"""
+		Factory method to create a :class:`ketl.tabmap.RowMapper` from a value extractor function.
+
+		See tests for examples of usage.
+		
+		## Parameters
+
+		:param extractor: a function that takes a row dictionary and returns the desired value.
+		The RowMapper instance that we create takes care of passing the value returned by this
+		function to :attr:`value_converter` for serialisation.
+		"""
+
+		class ExtractorRowValueMapper ( RowValueMapper ):
+			def __init__ ( self ):
+				super().__init__ ( column_ids, value_converter, pre_serializers, spark_data_type )
+
+			def value ( self, row_dict: dict [ str, Any ] ) -> str:
+				value = extractor ( row_dict )
+				return self.serialize ( value )
+		
+		return ExtractorRowValueMapper ()
+
+
+	@classmethod
+	def for_edge_id_auto (
+		cls,
+		property_mappers: list [ ConstantPropertyMapper | PropertyMapperMixin ],
+		prefix: str = None
+	) -> RowValueMapper:
+		"""
+		Factory method to create a :class:`ketl.PropertyMapperMixin` for relationship/edge IDs
+		by searching :attr:`GraphTriple.TYPE_KEY`, :attr:`GraphTriple.FROM_KEY` and :attr:`GraphTriple.TO_KEY` 
+		into the provided property mappers and using these mappers to build the edge ID, the same way
+		as :meth:`for_edge_id()`.
+		"""
+		def find_mapper ( prop_key: str ) -> PropertyMapperMixin:
+			mapper = next ( ( pm for pm in property_mappers if pm.property == prop_key ), None )
+			if not mapper:
+				raise ValueError ( f"RowValueMapper.for_edge_id_auto: can't find property mapper for '{prop_key}'" )
+			return mapper
+		
+		def extractor ( 
+			mapper: ConstantPropertyMapper | PropertyMapperMixin, row: dict [ str, Any ]
+		) -> str:
+			if isinstance ( mapper, ConstantPropertyMapper ):
+				return mapper.value ()
+			elif isinstance ( mapper, RowTripleMapperMixin ):
+				return mapper.value ( row )
+			raise ValueError ( f"RowValueMapper.for_edge_id_auto: unsupported mapper type {type(mapper)}" )
+
+		if not property_mappers:
+			raise ValueError ( "RowValueMapper.for_edge_id_auto: no property mappers given" )
+		
+		(type_map, from_map, to_map) = (
+			find_mapper ( GraphTriple.TYPE_KEY ),
+			find_mapper ( GraphTriple.FROM_KEY ),
+			find_mapper ( GraphTriple.TO_KEY )
+		)
+
+		col_ids = [ 
+			col for pm in ( type_map, from_map, to_map ) if isinstance ( pm, RowTripleMapperMixin )
+			for col in pm.column_ids
+		]
+
+		(type_extractor, from_extractor, to_extractor) = (
+			lambda row: extractor ( type_map, row ),
+			lambda row: extractor ( from_map, row ),
+			lambda row: extractor ( to_map, row )
+		)
+
+		return cls.from_extractor (
+			extractor = lambda row: cls.build_edge_id (
+				type_extractor ( row ),
+				from_extractor ( row ),
+				to_extractor ( row ),
+				prefix
+			),
+			column_ids = col_ids,
+			value_converter = IdentityValueConverter ()
+		)
+
+
+	@classmethod
+	def for_edge_id ( 
+		cls,
+		relation_type: str,
+		from_column_id: str,
+		to_column_id: str,
+		prefix: str = None,
+		value_converter: ValueConverter | None = None,
+		pre_serializers: PreSerializers | None = None,
+	) -> RowValueMapper:
+		"""
+		Factory method to create a :class:`ketl.tabmap.RowValueMapper` for relationship/edge IDs.
+		The ID this creates is a combination of the relation type and the from/to node IDs.
+
+		## Parameters
+
+		* :param relation_type: the relationship type, eg, "encodes-protein"
+		* :param from_column_id: the column ID that contains the source node ID
+		* :param to_column_id: the column ID that contains the destination node ID
+		* :param prefix: an optional prefix to add to the edge ID
+	
+		* For the other parameters, see :class:`ketl.Mapper`.
+			As for :class:`IdColumnMapper`, the default value converter is :class:`ketl.IdentityValueConverter`.
+		"""
+		return cls.from_extractor (
+			extractor = lambda row: cls.build_edge_id (
+				relation_type, row[ from_column_id ], row[ to_column_id ], prefix
+			),
+			column_ids = [ from_column_id, to_column_id ],
+			value_converter = value_converter if value_converter else IdentityValueConverter ( pre_serializers ),
+			pre_serializers = pre_serializers if not value_converter else None
+		)
+	
+	@classmethod
+	def build_edge_id ( cls, relation_type: str, from_id: str, to_id: str, prefix: str = None ) -> str:
+		"""
+		Simple helper to build a common edge ID from the common edge composite key.
+		"""
+		if not prefix: prefix = ""
+		return f"{prefix}{relation_type}_{from_id}_{to_id}"
+
+
+class RowTripleMapperMixin ( RowValueMapper, PropertyMapperMixin ):
+	"""
+	Row-oriented property mapper.
+	
+	This is similar to :class:`ketl.PropertyMapperMixin`, and it can be used to make grapth triple
+	mappers tabular format mappers.
+	"""
+	
+	def triple ( self, triple_id: str, row_dict: dict [ str, Any ] ) -> GraphTriple | None:
+		"""
+		Builds a :class:`ketl.GraphTriple` for this row, based on the value returned by :meth:`value()`.
+		Returns `None` the value mapping returns `None` (after massages like serialisation).
+		"""
+
+		prop_value = self.value ( row_dict )
+		if prop_value is None: return None
+		return GraphTriple ( triple_id, self.property, prop_value )
+
+	@classmethod
+	def from_extractor (
+		cls,
+		extractor: callable [ dict [ str, Any ], Any ],
+		property: str,
+		column_ids: list [ str ],
+		value_converter: ValueConverter | None = None,
+		pre_serializers: PreSerializers | None = None,
+		spark_data_type: DataType | None = None
+	) -> RowTripleMapperMixin:
+		class ExtractorRowTripleMapper ( RowTripleMapperMixin ):
+			def __init__ ( self ):
+				super().__init__ ( 
+					column_ids, value_converter, pre_serializers, spark_data_type
+				)
+				self._init ( property )
+
+			def value ( self, row_dict: dict [ str, Any ] ) -> str:
+				value = extractor ( row_dict )
+				if value is None: return None
+				return self.serialize ( value )
+			
+		return ExtractorRowTripleMapper ()
+	
+	@classmethod
+	def for_from ( 
+		cls, 
+		extractor: callable [ dict [ str, Any ], Any ],
+		column_ids: list [ str ],
+	) -> RowTripleMapperMixin:
+		return cls.from_extractor ( 
+			extractor, GraphTriple.FROM_KEY, column_ids, IdentityValueConverter () )
+
+	@classmethod
+	def for_to ( 
+		cls, 
+		extractor: callable [ dict [ str, Any ], Any ],
+		column_ids: list [ str ],
+	) -> RowTripleMapperMixin:
+		return cls.from_extractor ( 
+			extractor, GraphTriple.TO_KEY, column_ids, IdentityValueConverter ()
+		)
+
+		
+
+class ColumnValueMapper ( RowValueMapper ):
 	"""
 	Column-oriented value mapper. 
 	
@@ -32,8 +260,7 @@ class ColumnValueMapper ( Mapper ):
 		pre_serializers: PreSerializers | None = None,
 		spark_data_type: DataType | None = None
 	):
-		super().__init__ ( value_converter, pre_serializers, spark_data_type )
-		self.column = column_id
+		super().__init__ ( [ column_id ], value_converter, pre_serializers, spark_data_type )
 
 	def value ( self, row_dict: dict [ str, Any ] ) -> str:
 		"""
@@ -45,9 +272,18 @@ class ColumnValueMapper ( Mapper ):
 		If :attr:`value_converter` is set, it's used to serialise the value, possibly with 
 		  the pre-serialisers that were given to it by the this class' constructor.
 		"""
-		if self.column not in row_dict: return None
-		target_value = self.value_converter.serialize ( row_dict [ self.column ] )
+		if self.column_id not in row_dict: return None
+		target_value = self.serialize ( row_dict [ self.column_id ] )
 		return target_value # None maps to None, cases like '' have to be managed by the value_mapper
+	
+	@property
+	def column_id ( self ) -> str:
+		"""
+		Read-only property for the column ID that this mapper maps from.
+
+		This is a convenience property that wraps the first element of :attr:`column_ids`.
+		"""
+		return self.column_ids [ 0 ]
 
 
 class IdColumnMapper ( ColumnValueMapper ):
@@ -80,12 +316,12 @@ class IdColumnMapper ( ColumnValueMapper ):
 		return v
 
 
-class ColumnMapper ( ColumnValueMapper ):
+class ColumnMapper ( ColumnValueMapper, RowTripleMapperMixin ):
 	"""
 	Column-oriented property mapper.
 
-	An extension of :class:`ketl.tabmap.ColumnValueMapper` that builds an entire
-	:class:`ketl.GraphProperty`, in addition to a plain mapped string value.
+	An extension of :class:`ketl.tabmap.ColumnValueMapper` that combine with :class:`ketl.tabmap.RowTripleMapper`
+	to build an entire triple out of a column value.
 	"""
 	def __init__ ( 
 		self,
@@ -95,18 +331,51 @@ class ColumnMapper ( ColumnValueMapper ):
 		pre_serializers: PreSerializers | None = None,
 		spark_data_type: DataType | None = None
 	):
-		super ().__init__ ( column_id, value_converter, pre_serializers, spark_data_type )
-		self.property = property if property else column_id
+		ColumnValueMapper.__init__ ( 
+			self, column_id, value_converter, pre_serializers, spark_data_type 
+		)
+		self._init ( property if property else column_id )
 		
-	def triple ( self, triple_id: str, row_dict: dict [ str, Any ] ) -> GraphTriple | None:
+	
+	@classmethod
+	def for_from ( 
+		cls,
+		column_id: str,
+		value_converter: ValueConverter | None = None,
+		pre_serializers: PreSerializers | None = None
+	) -> ColumnMapper:
 		"""
-		Builds a :class:`ketl.GraphTriple` for this column/property using the current row.
-		Returns `None` if the current column value is null, empty or the current column mapper returns
-		`None`, that is, if `self.value( row_dict )` returns `None`.
+		Factory method to create a :class:`ketl.tabmap.ColumnMapper` for the :attr:`ketl.GraphTriple.FROM_KEY` property, ie, 
+		a relationship source node pointer.
+
+		As for :class:`IdColumnMapper`, the default value converter is :class:`ketl.IdentityValueConverter`.
 		"""
-		prop_value = self.value ( row_dict )
-		if prop_value is None: return None
-		return GraphTriple ( triple_id, self.property, prop_value )
+		return cls ( 
+			column_id,
+			GraphTriple.FROM_KEY, 
+			value_converter = value_converter if value_converter else IdentityValueConverter ( pre_serializers ),
+			pre_serializers = pre_serializers if not value_converter else None
+		)
+	
+	@classmethod
+	def for_to (
+		cls,
+		column_id: str,
+		value_converter: ValueConverter | None = None,
+		pre_serializers: PreSerializers | None = None
+	) -> ColumnMapper:
+		"""
+		Factory method to create a :class:`ketl.tabmap.ColumnMapper` for the :attr:`ketl.GraphTriple.TO_KEY` property, ie, 
+		a relationship destination node pointer.
+
+		As for :class:`IdColumnMapper`, the default value converter is :class:`ketl.IdentityValueConverter`.
+		"""
+		return cls (
+			column_id,
+			GraphTriple.TO_KEY,
+			value_converter = value_converter if value_converter else IdentityValueConverter ( pre_serializers ),
+			pre_serializers = pre_serializers if not value_converter else None
+		)
 
 
 class SparkDataFrameMapper:
@@ -126,13 +395,26 @@ class SparkDataFrameMapper:
 
 	TODO: validate against required properties, eg, type, from/to.
 	"""
+
+	class AutoEdgeId:
+		"""
+		Marker to tell that the id mapper should be auto-generated, using the prefix provided here
+		"""
+		def __init__ ( self, prefix: str = None ):
+			self.prefix = prefix
+
+
 	def __init__ ( 
 		self, 
-		id_mapper: IdColumnMapper, 
-		column_mappers: list[ ColumnMapper ] = None,
+		id_mapper: RowValueMapper | AutoEdgeId | None, 
+		row_mappers: list[ RowTripleMapperMixin ] = None,
 		const_prop_mappers: list[ ConstantPropertyMapper ] = None ):
 		"""
 		@param id_mapper: the :class:`ketl.tabmap.ColumnValueMapper` to build the triple ID.
+		  If it's None, it will use :meth:`ketl.tabmap.RowValueMapper.for_edge_id_auto`.
+			If it's :class:`ketl.tabmap.SparkDataFrameMapper.AutoIdMapper`, it will use auto-edge with
+			the given prefix.
+			**WARNING**: these only makes sense for relationship/edge mappers, not for nodes.
 
 		@param column_mapper_list: a list of :class:`ketl.tabmap.ColumnMapper` to build the triple/relationship properties.
 		  The order of this must match the order of the columns in the input DataFrame.
@@ -141,10 +423,23 @@ class SparkDataFrameMapper:
 		  This is useful to add properties like :py:attr:`ketl.GraphProperty.TYPE_KEY`.
 		"""
 		self.id_mapper = id_mapper
-		self.column_mappers = column_mappers if column_mappers else []
+
+		self.row_mappers = row_mappers if row_mappers else []
 		self.const_prop_mappers = const_prop_mappers if const_prop_mappers else []
-		self.column_mapper_keys = [ cmap.column for cmap in self.column_mappers ]
-		self.column_mapper_keys.append ( self.id_mapper.column )
+
+		if not self.id_mapper or isinstance ( self.id_mapper, SparkDataFrameMapper.AutoEdgeId ):
+			prefix = \
+			  self.id_mapper.prefix if isinstance ( self.id_mapper, SparkDataFrameMapper.AutoEdgeId ) \
+				else None
+			
+			self.id_mapper = RowValueMapper.for_edge_id_auto (
+				self.const_prop_mappers + self.row_mappers,
+				prefix = prefix
+			)
+
+		self._row_mapper_keys = [ col_id for cmap in self.row_mappers for col_id in cmap.column_ids ]
+		self._row_mapper_keys.extend ( self.id_mapper.column_ids )
+
 
 	def map ( self, df: DataFrame ) -> DataFrame:
 		def map_spark_row ( *selected_row ) -> list [ list [ str, str, str ] ]:
@@ -157,7 +452,7 @@ class SparkDataFrameMapper:
 			@return: a list of 3-element lists, corresponding to :class:`ketl.GraphTriple`, one row per 
 			property.
 			"""
-			row_dict = dict ( zip ( self.column_mapper_keys, selected_row ) )
+			row_dict = dict ( zip ( self._row_mapper_keys, selected_row ) )
 			log.debug ( f"map_spark_row() row_dict: {row_dict}" )
 
 			# The node or relationship ID
@@ -166,8 +461,8 @@ class SparkDataFrameMapper:
 			if not triple_id: return []
 
 			mapped_row = [] # id, key, value
-			for cmap in self.column_mappers:
-				triple = cmap.triple ( triple_id, row_dict )
+			for row_mapper in self.row_mappers:
+				triple = row_mapper.triple ( triple_id, row_dict )
 				if triple is None: continue
 				mapped_row.append ( [ triple_id, triple.key, triple.value ] )
 
@@ -191,7 +486,7 @@ class SparkDataFrameMapper:
 
 		# As per Spark documentation.
 		map_spark_row_udf = udf ( map_spark_row, out_schema )
-		selected_cols = [ df [ col ] for col in self.column_mapper_keys ]
+		selected_cols = [ df [ col ] for col in self._row_mapper_keys ]
 
 		out_df = df.withColumn ( "triples", map_spark_row_udf ( *selected_cols ) ) \
 		  .select ( explode ( "triples" ).alias ( "triple" ) ) \
@@ -220,7 +515,7 @@ class TabFileMapper:
 		self,
 
 		id_mapper: IdColumnMapper,
-		column_mappers: list[ ColumnMapper ] = None,
+		row_mappers: list[ ColumnMapper ] = None,
 		const_prop_mappers: list[ ConstantPropertyMapper ] | None = None,
 
 		spark_options: Dict[str, Any] | None = None,
@@ -241,7 +536,7 @@ class TabFileMapper:
 		"""
 
 		self.data_frame_mapper = SparkDataFrameMapper ( 
-			id_mapper, column_mappers, const_prop_mappers
+			id_mapper, row_mappers, const_prop_mappers
 		)
 		self.spark_options = spark_options
 
@@ -296,28 +591,32 @@ class TabFileMapper:
 		# for 'bar', we would be broken.
 		# 
 
-		all_cmappers = self.data_frame_mapper.column_mappers + [ self.data_frame_mapper.id_mapper ]
+		all_row_mappers = self.data_frame_mapper.row_mappers + [ self.data_frame_mapper.id_mapper ]
 
 		if not opts.get ( "inferSchema", True ):
 			# Check spark_data_type consistency
 			spark_data_types = {}
-			for cmap in all_cmappers:
-				if cmap.column not in spark_data_types:
-					spark_data_types [ cmap.column ] = cmap.spark_data_type
-					continue
-				if spark_data_types [ cmap.column ] != cmap.spark_data_type:
-					raise ValueError (
-						f"TabFileMapper: inconsistent spark_data_type values for the column '{cmap.column}'"
-					)
+			for row_mapper in all_row_mappers:
+				for col_id in row_mapper.column_ids:
+					if col_id not in spark_data_types:
+						spark_data_types [ col_id ] = row_mapper.spark_data_type
+						continue
+					if spark_data_types [ col_id ] != row_mapper.spark_data_type:
+						raise ValueError (
+							f"TabFileMapper: inconsistent spark_data_type values for the column '{col_id}'"
+						)
 
 		# Good, now build the schema with the listed columns, with casting as required.
 		df_col_map = {}
-		for cmap in all_cmappers:
-			df_col = df [ cmap.column ]
-			if not opts.get ( "inferSchema", True ) and cmap.spark_data_type:
-				df_col = df_col.cast ( cmap.spark_data_type )
+		for row_mapper in all_row_mappers:
+			for col_id in row_mapper.column_ids:
+				if col_id not in df.columns:
+					raise ValueError ( f"TabFileMapper: input file missing required column '{col_id}'" )
+				df_col = df [ col_id ]
+				if not opts.get ( "inferSchema", True ) and row_mapper.spark_data_type:
+					df_col = df_col.cast ( row_mapper.spark_data_type )
 
-			df_col_map [ cmap.column ] = df_col
+				df_col_map [ col_id ] = df_col
 
 		df = df.withColumns ( df_col_map )
 

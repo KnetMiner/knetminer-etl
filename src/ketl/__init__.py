@@ -10,6 +10,7 @@ from abc import ABC, abstractmethod
 from enum import StrEnum
 from typing import Any, Callable, TextIO
 
+from dataclasses import dataclass
 from brandizpyes.ioutils import dump_output
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
@@ -18,6 +19,7 @@ from pyspark.sql.types import DataType
 from ketl.spark_utils import DataFrameCheckpointManager
 
 
+@dataclass ( frozen = True )
 class GraphProperty:
 	"""
 	Core data structure to represent a knowledge graph node or relation property.
@@ -41,14 +43,14 @@ class GraphProperty:
 	Represent the relationship keys used for the endpoint nodes
 	"""
 
-	def __init__ (self, key: str, value: Any ):
-		self.key, self.value = key, value
+	key: str
+	value: Any
 	
-	def __repr__ ( self ) -> str:
-		return f"GraphProperty{{ {self.key}: {repr(self.value)} }}"
 
 
 
+
+@dataclass ( frozen = True )
 class GraphTriple ( GraphProperty ):
 	"""
 	Core data structure to represent a knowledge graph property plus the ID of the node or relationship
@@ -65,12 +67,15 @@ class GraphTriple ( GraphProperty ):
 
 	DATAFRAME_SCHEMA_LIST = [ ID_KEY, "key", "value" ]
 
-	def __init__ (self, id: str, key: str, value: Any ):
-		super ().__init__ ( key, value )
-		self.id = id
-	
+	id: str
+
+	def __init__ ( self, id: str, key: str, value: Any ):
+		object.__setattr__ ( self, 'id', id )
+		object.__setattr__ ( self, 'key', key )
+		object.__setattr__ ( self, 'value', value )	
+
 	def __repr__ ( self ) -> str:
-		return f"GraphTriple{{ '{self.id}', {self.key}: {repr(self.value)} }}"
+		return f"GraphTriple(id={self.id}, key={self.key}, value={self.value})"
 
 
 class PGElementType ( StrEnum ):
@@ -268,11 +273,35 @@ class Mapper ( ABC ):
 			return
 		
 		self.value_converter = value_converter
-		if pre_serializers:
-			self.value_converter.add_pre_serializers ( pre_serializers )
+		if pre_serializers: self.value_converter.add_pre_serializers ( pre_serializers )
 
 
-class ConstantPropertyMapper ( Mapper ):
+	def serialize ( self, value: Any ) -> str | None:
+		"""
+		Helper for serialising a value using the configured :attr:`value_converter`.
+		
+		You should use this in methods like `value()`, after having extracted a value from a data source.
+		"""
+		return self.value_converter.serialize ( value )
+
+
+
+class PropertyMapperMixin ( ABC ):
+	"""
+	Mixin for mappers that map to :class:`ketl.GraphProperty` or :class:`ketl.GraphTriple`.
+
+	The purpose of this is to mark a mapper that owns the :attr:`property` attribute.
+	"""
+
+	def _init ( self, property: str ):
+		"""
+		Initialises the mixin. This must be called by subclasses (typically from their constructors), 
+		before using methods like `triple()`.
+		"""
+		self.property = property
+
+
+class ConstantPropertyMapper ( Mapper, PropertyMapperMixin ):
 	"""
 	A :class:`ketl.Mapper` to add constant value properties to a knowledge graph.
 
@@ -300,7 +329,7 @@ class ConstantPropertyMapper ( Mapper ):
 			pre_serializers,
 			spark_data_type
 		)
-		self.property = property
+		self._init ( property )
 		self.constant_value = constant_value
 
 	def triple ( self, triple_id: str ) -> GraphTriple | None:
@@ -308,20 +337,29 @@ class ConstantPropertyMapper ( Mapper ):
 		Does the mapping job, by building a :class:`ketl.GraphTriple` with the constant property/value.
 		and the provided triple ID.
 		"""
-		v = self.value_converter.serialize ( self.constant_value )
+		v = self.value()
 		if v is None: return None # TODO: does it make sense?
 		return GraphTriple ( triple_id, self.property, v )
+	
+	def value ( self ) -> str | None:
+		"""
+		Returns the constant value, after the expected serialisation of the configured :attr:`value_converter`,
+		which is obtained through :meth:`ketl.Mapper.serialize()`.
+		"""
+		return self.serialize ( self.constant_value )
 	
 	@classmethod
 	def for_type ( cls, type_value: str ):
 		"""
-		Helpers to build a :class:`ketl.ConstantPropertyMapper` for the :py:attr:`ketl.GraphTriple.TYPE_KEY` property,
+		Helper to build a :class:`ketl.ConstantPropertyMapper` for the :py:attr:`ketl.GraphTriple.TYPE_KEY` property,
 		that is, for a node/edge label/type.
 
 		We use the :class:`ketl.IdentityValueConverter` here, since types aren't properties and tools
 		like the Neo4j uploader expect them to be unquoted strings.
 		"""
 		return cls ( GraphTriple.TYPE_KEY, type_value, IdentityValueConverter () )
+	
+
 
 
 def triples_2_pg_df ( 

@@ -1,1 +1,1 @@
-# Added to make the VSC test plug-in discover tests in this folder (as per documentation).
+# pytest and VSC plug-ins require this.

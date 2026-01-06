@@ -7,12 +7,130 @@ from assertpy import assert_that
 from pyspark.sql import DataFrame
 from pyspark.sql.types import IntegerType
 
-from ketl import ConstantPropertyMapper, GraphTriple
+from ketl import ConstantPropertyMapper, GraphTriple, IdentityValueConverter
 from ketl.spark_utils import assertDataFrameEqualX
-from ketl.tabmap import (ColumnMapper, ColumnValueMapper, IdColumnMapper,
+from ketl.tabmap import (ColumnMapper, ColumnValueMapper, IdColumnMapper, RowTripleMapperMixin, RowValueMapper,
                          SparkDataFrameMapper, TabFileMapper)
 
 log = logging.getLogger ( __name__ )
+
+class TestRowValueMapper:
+	def test_from_extractor ( self ):
+		extractor = lambda row: f"ENSEMBL:{row [ 'accession' ].upper ()} ({row ['name']})"
+
+		rvmap = RowValueMapper.from_extractor (
+			extractor = extractor,
+			column_ids = [ "accession", "name" ]
+		 )
+		row = { "accession": "ENSG00000139618", "name": "BRCA2", "other": "foo" }
+		mapped_value = rvmap.value ( row )
+		assert_that ( mapped_value, "The test custom mapper returns correct edge ID" )\
+			.is_equal_to ( '"' + extractor ( row ) + '"' )
+		
+	@pytest.mark.parametrize ( 
+		"prefix",
+		[ None, "test:" ],
+		ids = [ "regular", "with-prefix" ]
+	)
+	def test_for_edge_id ( self, prefix ):
+		relation_type = "encodes-protein"
+
+		rvmap = RowValueMapper.for_edge_id (
+			relation_type = relation_type,
+			from_column_id = "gene accession",
+			to_column_id = "protein accession",
+			prefix = prefix
+		)
+
+		row = { "gene accession": "GENE001", "protein accession": "PROT001" }
+		mapped_value = rvmap.value ( row )
+		if not prefix: prefix = ""
+		expected_value = f"{prefix}{relation_type}_{row['gene accession']}_{row['protein accession']}"
+
+		assert_that ( mapped_value, "for_edge_id() returns the expected edge ID" )\
+			.is_equal_to ( expected_value )
+		
+	@pytest.mark.parametrize ( 
+		"prefix",
+		[ None, "test:" ],
+		ids = [ "regular", "with-prefix" ]
+	)
+	def test_for_edge_id_auto ( self, prefix ):
+		relation_type = "encodes-protein"
+
+		type_map = ConstantPropertyMapper.for_type ( relation_type )
+		from_map = ColumnMapper.for_from ( "gene accession" )
+		to_map = ColumnMapper.for_to ( "protein accession" )
+
+		edge_id_map = RowValueMapper.for_edge_id_auto (
+			property_mappers = [ type_map, from_map, to_map ],
+			prefix = prefix
+		)
+
+		row = { "gene accession": "GENE002", "protein accession": "PROT002" }
+		mapped_value = edge_id_map.value ( row )
+		if not prefix: prefix = ""
+		expected_value = f"{prefix}{relation_type}_{row['gene accession']}_{row['protein accession']}"
+
+		assert_that ( mapped_value, "for_edge_id_auto() returns the expected edge ID" )\
+			.is_equal_to ( expected_value )
+
+
+class TestRowTripleMapperMixin:
+	def test_extractor ( self ):
+		ex_ns = "http://example.org/resource/"
+		extractor = lambda row: f"{ex_ns}encodes_{row[ 'gene accession'] }_{row[ 'protein accession' ]}"
+
+		prop = "uri"
+		triple_id = "edge1"
+		row = { "gene accession": "gene001", "protein accession": "prot001" }
+
+		mapper = RowTripleMapperMixin.from_extractor (
+			extractor = extractor,
+			property = prop,
+			column_ids = [ "gene accession", "protein accession" ],
+			value_converter = IdentityValueConverter ()
+		)
+		mapped_triple = mapper.triple ( triple_id, row )
+		expected_triple_id = GraphTriple ( triple_id, prop, extractor ( row ) )
+
+		assert_that ( mapped_triple, "The test custom mapper returns the expected triple" )\
+			.is_equal_to ( expected_triple_id )
+		
+	def test_for_from ( self ):
+		extractor = lambda row: f"ENSEMBL:{row [ 'gene accession' ].upper ()}"
+		
+		mapper = RowTripleMapperMixin.for_from (
+			extractor = extractor,
+			column_ids = [ "gene accession" ]
+		)
+
+		triple_id = "edge001"
+		row = { "gene accession": "gene002", "protein accession": "prot002" }
+
+		mapped_triple = mapper.triple ( triple_id, row )
+		expected_triple = GraphTriple ( triple_id, GraphTriple.FROM_KEY, extractor ( row ) )
+
+		assert_that ( mapped_triple, "for_from() returns the expected triple" )\
+			.is_equal_to ( expected_triple )
+
+	def test_for_to ( self ):
+		extractor = lambda row: f"UNIPROT:{row [ 'protein accession' ].upper ()}"
+		
+		mapper = RowTripleMapperMixin.for_to (
+			extractor = extractor,
+			column_ids = [ "protein accession" ]
+		)
+
+		triple_id = "edge002"
+		row = { "gene accession": "gene003", "protein accession": "prot003" }
+
+		mapped_triple = mapper.triple ( triple_id, row )
+		expected_triple = GraphTriple ( triple_id, GraphTriple.TO_KEY, extractor ( row ) )
+
+		assert_that ( mapped_triple, "for_to() returns the expected triple" )\
+			.is_equal_to ( expected_triple )
+
 
 class TestColumnValueMapper:
 	def test_basics ( self ):
@@ -111,9 +229,9 @@ class TestSparkDataFrameMapper:
 		name_mapper = ColumnMapper ( "name", "hasName" )
 		age_mapper = ColumnMapper ( "age" )
 		
-		col_mappers = [ name_mapper, age_mapper ]
+		row_mappers = [ name_mapper, age_mapper ]
 		
-		df_mapper = SparkDataFrameMapper ( id_mapper, col_mappers )
+		df_mapper = SparkDataFrameMapper ( id_mapper, row_mappers = row_mappers )
 		triples_df = df_mapper.map ( df )
 		log.debug ( f"test_map(), mapped triples: {triples_df.collect()}" )
 
@@ -186,6 +304,109 @@ class TestSparkDataFrameMapper:
 			( 2 + 2 ) * 2 # 2 rows, each with 2 const + 2 col_mappers
 		)
 
+	
+	def test_from_extractor_row_mapper ( self, spark_session ):
+		data = [
+			{ "gene accession": "GENE001", "protein accession": "PROT001", "reference": "122030434" },
+			{ "gene accession": "GENE002", "protein accession": "PROT002" }
+		]
+		df = spark_session.createDataFrame ( data )
+
+		edge_id_mapper = RowValueMapper.for_edge_id (
+			relation_type = "encodes-protein",
+			from_column_id = "gene accession",
+			to_column_id = "protein accession"
+		)
+
+		type_mapper = ConstantPropertyMapper.for_type ( "encodes-protein" )
+
+		from_mapper = RowTripleMapperMixin.for_from (
+			lambda row: f"ENSEMBL:{row['gene accession']}",
+			[ "gene accession" ]
+		)
+
+		to_mapper = RowTripleMapperMixin.for_to (
+			lambda row: f"UNIPROT:{row['protein accession']}",
+			[ "protein accession" ]
+		)
+
+		def pmid_extractor ( row ):
+			# If it's optional, you've to handle missing values, return None to tell the upstream
+			# layers to skip this triple.
+			ref = row.get ( "reference", None )
+			return f"PMID:{ref}" if ref else None
+
+		pmid_mapper = RowTripleMapperMixin.from_extractor (
+			extractor = pmid_extractor,
+			property = "hasPMID",
+			column_ids = [ "reference" ]
+		)
+
+		df_mapper = SparkDataFrameMapper (
+			id_mapper = edge_id_mapper,
+			row_mappers = [ from_mapper, to_mapper, pmid_mapper ],
+			const_prop_mappers = [ type_mapper ]
+		)
+
+		triples_df = df_mapper.map ( df )
+		mapped_triples = { (row.id, row.key, row.value) for row in triples_df.collect () }
+		log.debug ( f"test_from_extractor_row_mapper(), mapped triples: {mapped_triples}" )
+		
+		expected_triples = {
+			( "encodes-protein_GENE001_PROT001", GraphTriple.TYPE_KEY, "encodes-protein" ),
+			( "encodes-protein_GENE001_PROT001", GraphTriple.FROM_KEY, "ENSEMBL:GENE001" ),
+			( "encodes-protein_GENE001_PROT001", GraphTriple.TO_KEY, "UNIPROT:PROT001" ),
+			( "encodes-protein_GENE001_PROT001", "hasPMID", '"PMID:122030434"' ),
+			
+			( "encodes-protein_GENE002_PROT002", GraphTriple.TYPE_KEY, "encodes-protein" ),
+			( "encodes-protein_GENE002_PROT002", GraphTriple.FROM_KEY, "ENSEMBL:GENE002" ),
+			( "encodes-protein_GENE002_PROT002", GraphTriple.TO_KEY, "UNIPROT:PROT002" )
+		}
+
+		# Note: contains_only() with lists was giving some error about string formatting
+		# (assertpy bug?)
+		#
+		assert_that ( mapped_triples, "Mapper triples are as expected" )\
+			.is_equal_to ( expected_triples )
+		
+
+	def test_auto_edge_id ( self, spark_session ):
+		"""
+		Tests RowValueMapper.for_edge_id_auto() together with SparkDataFrameMapper.
+		"""
+		data = [
+			{ "gene accession": "GENE001", "protein accession": "PROT001" },
+			{ "gene accession": "GENE002", "protein accession": "PROT002" }
+		]
+		df = spark_session.createDataFrame ( data )
+
+		df_mapper = SparkDataFrameMapper (
+			id_mapper = SparkDataFrameMapper.AutoEdgeId ( prefix = "test:" ),
+			row_mappers = [ 
+				ColumnMapper.for_from ( column_id = "gene accession" ),
+				ColumnMapper.for_to ( column_id = "protein accession" )
+			],
+			const_prop_mappers = [ ConstantPropertyMapper.for_type ( "encodes-protein" ) ]
+		)
+
+		triples_df = df_mapper.map ( df )
+		mapped_triples = { (row.id, row.key, row.value) for row in triples_df.collect () }
+		log.debug ( f"test_auto_edge_id(), mapped triples: {mapped_triples}" )
+		
+		expected_triples = {
+			( "test:encodes-protein_GENE001_PROT001", GraphTriple.TYPE_KEY, "encodes-protein" ),
+			( "test:encodes-protein_GENE001_PROT001", GraphTriple.FROM_KEY, "GENE001" ),
+			( "test:encodes-protein_GENE001_PROT001", GraphTriple.TO_KEY, "PROT001" ),
+			
+			( "test:encodes-protein_GENE002_PROT002", GraphTriple.TYPE_KEY, "encodes-protein" ),
+			( "test:encodes-protein_GENE002_PROT002", GraphTriple.FROM_KEY, "GENE002" ),
+			( "test:encodes-protein_GENE002_PROT002", GraphTriple.TO_KEY, "PROT002" )
+		}
+
+		assert_that ( set ( mapped_triples ), "Mapped triples are as expected" )\
+			.is_equal_to ( set ( expected_triples ) )
+		
+
 @pytest.mark.usefixtures ( "spark_session" )
 class TestTabFileMapper:
 
@@ -198,7 +419,7 @@ class TestTabFileMapper:
 		#
 		tb_mapper = TabFileMapper (
 			id_mapper = IdColumnMapper ( column_id = "accession" ),	
-			column_mappers = [
+			row_mappers = [
 				ColumnMapper ( column_id = "name", property = "hasGeneName" ),
 				ColumnMapper ( "accession", "hasAccession" ),
 				ColumnMapper ( "chromosome", "hasChromosomeId" ),
@@ -212,7 +433,7 @@ class TestTabFileMapper:
 			spark_options = { "inferSchema": False }
 		)
 
-		test_file_path = os.path.dirname ( os.path.abspath ( __file__ ) ) + "/resources/test_genes.tsv"		
+		test_file_path = os.path.dirname ( os.path.abspath ( __file__ ) ) + "/resources/test-genes.tsv"		
 		triples_df = tb_mapper.map ( spark_session, test_file_path )
 
 
@@ -226,7 +447,7 @@ class TestTabFileMapper:
 		assert_that ( triples_df.count (), "Number of mapped triples match" )\
 			.is_equal_to ( 
 				8 # total rows in the TSV
-				* ( len ( tb_mapper.data_frame_mapper.column_mappers ) 
+				* ( len ( tb_mapper.data_frame_mapper.row_mappers ) 
 			 			+ len ( tb_mapper.data_frame_mapper.const_prop_mappers ) )
 			)
 
