@@ -21,9 +21,9 @@ from ketl import (ConstantPropertyMapper, PGElementType, pg_df_2_pg_jsonl,
                   triples_2_pg_df)
 from ketl.spark_utils import DataFrameCheckpointManager
 from ketl.tabmap import (ColumnMapper, IdColumnMapper, SparkDataFrameMapper,
-                         TabFileMapper)
-												 
-from ketl.test.snake import PROTEINS_MAPPER, ENCODING_MAPPER 
+						 TabFileMapper)
+
+from ketltest.snake import PROTEINS_MAPPER, ENCODING_MAPPER
 
 
 KETL_DATA = os.environ [ "KETL_DATA" ] # TODO
@@ -94,7 +94,7 @@ rule genes_triples_2_pg_df:
 			triples_df,
 			PGElementType.NODE,
 			spark = spark_session,
-			out_path = pg_genes_path
+			out_path = pg_path
 		)
 
 
@@ -113,7 +113,7 @@ rule map_gene_tsv:
 		"""
 		tb_mapper = TabFileMapper (
 			id_mapper = IdColumnMapper ( column_id = "accession" ),	
-			column_mappers = [
+			row_mappers = [
 				ColumnMapper ( column_id = "name", property = "hasGeneName" ),
 				ColumnMapper ( "accession", "hasAccession" ),
 				ColumnMapper ( "chromosome", "hasChromosomeId" ),
