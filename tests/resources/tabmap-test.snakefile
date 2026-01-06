@@ -3,7 +3,14 @@ TODO: Comment me!
 
 TODO: try SnakeMake unit test tool: https://snakemake.readthedocs.io/en/stable/snakefiles/testing.html
 
-TODO: Map TSV to edges and put all together
+TODO: Map TSV to edges and put all together. To finish this:
+  - Test RowValueMapper.from_extractor() in its own test OK
+	- Review for_from(), for_to() and alike (too many defaults) OK
+	- Finalise snake.py
+	- Bring snake.py here
+	- Comments
+	- test_infer_schema, test_inconsistent_mappers_on_same_row
+	
 TODO: Neo4j loader
 """
 
@@ -15,6 +22,9 @@ from ketl import (ConstantPropertyMapper, PGElementType, pg_df_2_pg_jsonl,
 from ketl.spark_utils import DataFrameCheckpointManager
 from ketl.tabmap import (ColumnMapper, IdColumnMapper, SparkDataFrameMapper,
                          TabFileMapper)
+												 
+from ketl.test.snake import PROTEINS_MAPPER, ENCODING_MAPPER 
+
 
 KETL_DATA = os.environ [ "KETL_DATA" ] # TODO
 KETL_IN = os.path.abspath ( workflow.basedir )
@@ -34,9 +44,19 @@ mapped_genes_check_path = DataFrameCheckpointManager.get_intermediate_check_path
 	mapped_genes_path
 )
 
-pg_genes_path = f"{KETL_OUT}/genes-pg.parquet"
-pg_genes_check_path = DataFrameCheckpointManager.get_intermediate_check_path ( 
-	pg_genes_path
+mapped_proteins_path = f"{KETL_OUT}/proteins-triples.parquet"
+mapped_proteins_check_path = DataFrameCheckpointManager.get_intermediate_check_path ( 
+	mapped_proteins_path
+)
+
+mapped_encodings_path = f"{KETL_OUT}/encodings-triples.parquet"
+mapped_encodings_check_path = DataFrameCheckpointManager.get_intermediate_check_path ( 
+	mapped_encodings_path
+)
+
+pg_path = f"{KETL_OUT}/knowledge-graph.parquet"
+pg_check_path = DataFrameCheckpointManager.get_intermediate_check_path ( 
+	pg_path
 )
 
 rule all:
@@ -45,35 +65,42 @@ rule all:
 
 
 rule triples_2_json_pg:
-	# TODO: Make at least another parquet and have the rule running once per each input
 	input:
-		triples_df = pg_genes_check_path
+		triples_df = pg_check_path
 	output:
 		json_pg = f"{KETL_OUT}/knowledge-graph.json"
 	run:
-		pg_df_2_pg_jsonl ( pg_genes_path, spark_session, output.json_pg )
+		pg_df_2_pg_jsonl ( pg_path, spark_session, output.json_pg )
 
 
 rule genes_triples_2_pg_df:
 	"""
-	TODO: Show how to combine mapping and PG conversion.
+	Builds a single PG DataFrame from multiple triples DataFrames.
+
+	This shows how to do that by unioning DFs.
 	"""
 	input:
-		triples_df = mapped_genes_check_path
+		triples_df = [ mapped_genes_check_path, mapped_proteins_check_path ]
 	output:
-		pg_df = pg_genes_check_path
+		pg_df = pg_check_path
 	run:
+		triples_df = None
+		for path in ( mapped_genes_path, mapped_proteins_path ):
+			triples_df = \
+				spark_session.read.parquet ( path ) if triples_df is None \
+				else triples_df.unionByName ( spark_session.read.parquet ( path ) )
+
 		pg_df = triples_2_pg_df (
-			mapped_genes_path,
+			triples_df,
 			PGElementType.NODE,
 			spark = spark_session,
 			out_path = pg_genes_path
-		 )
+		)
 
 
 rule map_gene_tsv:
 	input:
-		tsv = f"{KETL_IN}/test_genes.tsv"
+		tsv = f"{KETL_IN}/test-genes.tsv"
 	output:
 		parquet = mapped_genes_check_path
 	run:
@@ -95,10 +122,32 @@ rule map_gene_tsv:
 			],
 			const_prop_mappers = [
 				ConstantPropertyMapper.for_type ( "Gene" ),
-				ConstantPropertyMapper ( property = "source", constant_value = "TestTSV" )
+				ConstantPropertyMapper ( property = "source", constant_value = "SnakeTest" )
 			],
 			spark_options = { "inferSchema": False }
 		)
 
 		tb_mapper.map ( spark_session, input.tsv, out_path = mapped_genes_path )
 
+
+rule map_protein_tsv:
+	input:
+		tsv = f"{KETL_IN}/test-proteins.tsv"
+	output:
+		parquet = mapped_proteins_check_path
+	run:
+		"""
+		This imports from a file of mappers/config.
+		"""
+		PROTEINS_MAPPER.map ( spark_session, input.tsv, out_path = mapped_proteins_path )
+
+
+rule map_encoding_tsv:
+	input:
+		# The 1-1 links to the genes are included in the proteins file, and our framework
+		# allows for mapping the same files to multiple mappers.
+		tsv = f"{KETL_IN}/test-proteins.tsv"
+	output:
+		parquet = mapped_encodings_check_path
+	run:
+		ENCODING_MAPPER.map ( spark_session, input.tsv, out_path = mapped_encodings_path )
