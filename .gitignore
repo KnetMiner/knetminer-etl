@@ -220,3 +220,4 @@ logs/
 /.project # MeGit, based on Eclipse.
 
 .snakemake
+/.project
