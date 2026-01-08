@@ -74,6 +74,7 @@ class TestRowValueMapper:
 
 		assert_that ( mapped_value, "for_edge_id_auto() returns the expected edge ID" )\
 			.is_equal_to ( expected_value )
+# /TestRowValueMapper
 
 
 class TestRowTripleMapperMixin:
@@ -130,6 +131,7 @@ class TestRowTripleMapperMixin:
 
 		assert_that ( mapped_triple, "for_to() returns the expected triple" )\
 			.is_equal_to ( expected_triple )
+# /TestRowTripleMapperMixin
 
 
 class TestColumnValueMapper:
@@ -168,6 +170,7 @@ class TestColumnValueMapper:
 		row = {}
 		v = cvmap.value ( row )
 		assert_that ( v, "value() returns None for empty row" ).is_none ()
+# /TestColumnValueMapper
 
 class TestIdColumnMapper:
 	def test_basics ( self ):
@@ -188,9 +191,9 @@ class TestIdColumnMapper:
 		row = { "id": "", "name": "Alice" }
 		assert_that ( lambda: idmap.value ( row ), "value() fails with empty ID" )\
 			.raises ( ValueError )
+# /TestIdColumnMapper
 
 class TestColumnMapper:
-		
 	def test_basics ( self ):
 		cmap = ColumnMapper ( "name", "hasName" )
 		test_value = "Alice"
@@ -212,6 +215,7 @@ class TestColumnMapper:
 		row = {}
 		rec = cmap.triple ( "N001", row )
 		assert_that ( rec, "node_record() returns None for empty row" ).is_none ()
+# /TestColumnMapper
 
 
 @pytest.mark.usefixtures ( "spark_session" )
@@ -250,6 +254,7 @@ class TestSparkDataFrameMapper:
 			triples_df, expected_df, ignoreColumnOrder = True, ignoreColumnType = False,
 			msg = "map() didn't work"
 		)
+	# /test_map
 
 	def test_map_constants ( self, spark_session ):
 		data = [
@@ -303,6 +308,7 @@ class TestSparkDataFrameMapper:
 		).is_equal_to (
 			( 2 + 2 ) * 2 # 2 rows, each with 2 const + 2 col_mappers
 		)
+	# /test_map_constants
 
 	
 	def test_from_extractor_row_mapper ( self, spark_session ):
@@ -368,6 +374,7 @@ class TestSparkDataFrameMapper:
 		#
 		assert_that ( mapped_triples, "Mapper triples are as expected" )\
 			.is_equal_to ( expected_triples )
+	# /test_from_extractor_row_mapper
 		
 
 	def test_auto_edge_id ( self, spark_session ):
@@ -405,11 +412,11 @@ class TestSparkDataFrameMapper:
 
 		assert_that ( set ( mapped_triples ), "Mapped triples are as expected" )\
 			.is_equal_to ( set ( expected_triples ) )
-		
+	# /test_auto_edge_id
+# /TestSparkDataFrameMapper
 
 @pytest.mark.usefixtures ( "spark_session" )
 class TestTabFileMapper:
-
 	def	test_mapping_tsv ( self, spark_session ):
 
 		# This also shows how a configuration in a real case would look like.
@@ -474,6 +481,7 @@ class TestTabFileMapper:
 			assert_that ( triples, f"Expected {test_id}.{key} in the result" )\
 			.extracting ( 'id', 'key', 'value' )\
 			.contains ( ( test_id, key, val ) )
+	# /test_mapping_tsv
 
 
 	def test_infer_schema ( self, spark_session ):
@@ -482,3 +490,4 @@ class TestTabFileMapper:
 
 	def test_inconsistent_mappers_on_same_row ( self, spark_session ):
 		warnings.warn ( "TODO: implement me!" )
+# /TestTabFileMapper

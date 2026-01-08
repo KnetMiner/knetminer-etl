@@ -1,3 +1,8 @@
+"""
+A sample/test config of tab mappers, to be used in an ETL workflow.
+See tests/resources/tabmap-test.snakefile
+
+"""
 from ketl.tabmap import TabFileMapper, IdColumnMapper, ColumnMapper, RowValueMapper
 from ketl import ConstantPropertyMapper
 from pyspark.sql.types import IntegerType
@@ -20,7 +25,7 @@ ENCODING_MAPPER = TabFileMapper (
 	row_mappers = [
 		ColumnMapper.for_from ( column_id = "gene accession" ),
 		ColumnMapper.for_to ( column_id = "accession" ),
-		ColumnMapper ( column_id = "notes" )
+		ColumnMapper ( column_id = "link notes" )
 	],
 	const_prop_mappers = [
 		# The PG relationship type

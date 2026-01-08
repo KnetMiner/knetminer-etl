@@ -379,8 +379,11 @@ def triples_2_pg_df (
 
 	:param spark: when `triples_df_or_path` is a path, the Spark session used to load the Parquet file 
 	(mandatory param in that case).
+
+	:param out_path: optional path where to save the resulting DataFrame as a Parquet file, through
+	:class:`ketl.spark_utils.DataFrameCheckpointManager`.
 		
-	## Returns:
+	## Returns:
 	A data frame reflecting the structure of PG-Format, ie, with the columns:
 
 	- type (string): equals to `triples_type`
@@ -479,29 +482,35 @@ def pg_df_2_pg_jsonl (
 	"""
 	Writes a DataFrame in the JSONL/PG format to a file if `out_path` is provided.
 
-	Args:
-		pg_df_or_path: when a DataFrame, the input DF in PG-Format (see :func:`ketl.triples_2_pg_df`).
+	## Parameters:
+	- pg_df_or_path: when a DataFrame, the input DF in PG-Format (see :func:`ketl.triples_2_pg_df`).
 		When a string, the path to a Parquet file storing the same kind of data frame, which is loaded
 		through `spark`.
 
-		spark: when `pg_df_or_path` is a path, the Spark session used to load the Parquet file. So, it 
+	- spark: when `pg_df_or_path` is a path, the Spark session used to load the Parquet file. So, it 
 		is mandatory in that case.
 
-		out_path: has the same semantics of the corresponding parameter passed to :func:`ketl.dump_output`, that is:
+	- out_path: has the same semantics of the corresponding parameter passed to :func:`ketl.dump_output`, that is:
 		writes to a file path, or a file-like object, or to a to-be-returned string buffer.
 
-		value_converters (dict[str, ValueConverter], optional): A dictionary of value converters, to be used
+	- value_converters (dict[str, ValueConverter], optional): A dictionary of value converters, to be used
 		to unserialise from string representations in the property values back to the real values. If a converter
 		isn't set for a property key, we use the default :class:`JSONBasedValueConverter` (see its docstring for
 		details).
 
-	Returns:
-		str | None: The JSONL/PG content as a string if `out_path` is None, otherwise None.
+	## Returns:
+		The JSONL/PG content as a string if `out_path` is None, otherwise None.
 
 	"""
 
 	def writer ( fh: TextIO ):
-
+		"""
+		The writer for :func:`ketl.dump_output`.
+		
+		Just iterates over the DataFrame rows and dumps PG-Format JSON objects.
+		"""
+		
+		# pg_df_or_path is now a DF
 		for row in pg_df_or_path.toLocalIterator ():
 			# Unserialize property values
 			properties = {}

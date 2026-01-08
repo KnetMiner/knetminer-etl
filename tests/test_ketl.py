@@ -23,6 +23,7 @@ class TestGraphProperty:
 			# self.assertEqual ( eval ( f"n.{a}" ), v, f"Attribute {a} mismatch" )
 			assert_that ( eval ( f"n.{a}" ), f"The GraphProperty '{a}' has the expected value" )\
 				.is_equal_to ( v )
+# /TestGraphProperty
 
 
 class TestGraphTriple:
@@ -31,6 +32,7 @@ class TestGraphTriple:
 		n = GraphTriple ( *attrs.values () )
 		for a, v in attrs.items ():
 			assert_that ( eval ( f"n.{a}" ), f"The GraphTriple '{a}' has the expected value" ).is_equal_to ( v )
+# /TestGraphTriple
 
 class TestValueConverters:
 	def test_string_conversion ( self ):
@@ -94,6 +96,7 @@ class TestValueConverters:
 
 		assert_that ( converter.serialize ( "" ), "Pre-serializer-equipped converter converts empty string to default" ).is_equal_to ( '"' + default + '"' )
 		assert_that ( converter.serialize ( None ), "Pre-serializer-equipped converter converts None to default" ).is_equal_to ( '"' + default + '"' )
+# /TestValueConverters
 
 class TestConstantPropertyMapper:
 	def test_basics ( self ):
@@ -141,10 +144,12 @@ class TestConstantPropertyMapper:
 		assert_that ( triple.id, "Triple ID is as expected" ).is_equal_to ( triple_id )
 		assert_that ( triple.key, "Triple key is as expected" ).is_equal_to ( GraphTriple.TYPE_KEY )
 		assert_that ( triple.value, "Triple value is as expected" ).is_equal_to ( type_label )
+# /TestConstantPropertyMapper
 
 
-
+# See tests below
 _spark_session: SparkSession = None
+
 
 @pytest.fixture ( name = "spark_session", scope = "module", autouse = True )
 def forward_spark_session_fixture ( spark_session: SparkSession ):
@@ -154,6 +159,7 @@ def forward_spark_session_fixture ( spark_session: SparkSession ):
 	"""
 	global _spark_session
 	_spark_session = spark_session
+
 
 class SparkBasedTestCase:
 	"""
@@ -176,6 +182,7 @@ class SparkBasedTestCase:
 		"""
 		global _spark_session
 		cls.spark = _spark_session
+# /SparkBasedTestCase
 
 
 class TestTriples2PgDf ( SparkBasedTestCase ):
@@ -351,6 +358,7 @@ class TestTriples2PgDf ( SparkBasedTestCase ):
 		assert_that ( e003.properties[ "description" ], "'description' property is a list in edge E003" ).is_instance_of ( list )
 		assert_that ( e003.properties[ "description" ], "'description' property has one value in edge E003" ).is_length ( 1 )
 		assert_that ( e003.properties[ "description" ], "Edge E003 has correct 'description' value" ).contains ( '"Inferred relationship"' )
+# /TestTriples2PgDf
 
 
 class TestPgDf2PgJSONL ( SparkBasedTestCase ):
@@ -404,6 +412,7 @@ class TestPgDf2PgJSONL ( SparkBasedTestCase ):
 
 		cls.jsonl_nodes = jsonl_str_to_list ( pg_df_2_pg_jsonl ( cls.nodes_pg_df ) )
 		cls.jsonl_edges = jsonl_str_to_list ( pg_df_2_pg_jsonl ( cls.edges_pg_df ) )
+	# /setup_class
 
 
 	def test_node_basics ( self ):
@@ -460,3 +469,4 @@ class TestPgDf2PgJSONL ( SparkBasedTestCase ):
 		e003 = next ( edge for edge in self.jsonl_edges if edge[ "id" ] == "E003" )
 		e003_descriptions = e003[ "properties" ][ "description" ]
 		assert_that ( e003_descriptions, "Edge E003 has correct 'description' property" ).contains ( "Inferred relationship" )
+# /TestPgDf2PgJSONL

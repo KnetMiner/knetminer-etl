@@ -40,11 +40,15 @@ class RowValueMapper ( Mapper ):
 		
 		- value_converter, pre_serializers, spark_data_type: see :class:`ketl.Mapper`.
 		"""
+
 		super().__init__ ( value_converter, pre_serializers, spark_data_type )
 		self.column_ids = column_ids
 
 	@abstractmethod
 	def value ( self, row_dict: dict [ str, Any ] ) -> str | None:
+		"""
+		The method that does the job of mapping a row to a value.
+		"""
 		pass
 
 	
@@ -78,6 +82,7 @@ class RowValueMapper ( Mapper ):
 				return self.serialize ( value )
 		
 		return ExtractorRowValueMapper ()
+	# /from_extractor
 
 
 	@classmethod
@@ -110,23 +115,27 @@ class RowValueMapper ( Mapper ):
 		if not property_mappers:
 			raise ValueError ( "RowValueMapper.for_edge_id_auto: no property mappers given" )
 		
+		# Get the ID component mappers
 		(type_map, from_map, to_map) = (
 			find_mapper ( GraphTriple.TYPE_KEY ),
 			find_mapper ( GraphTriple.FROM_KEY ),
 			find_mapper ( GraphTriple.TO_KEY )
 		)
 
+		# Required in the final result
 		col_ids = [ 
 			col for pm in ( type_map, from_map, to_map ) if isinstance ( pm, RowTripleMapperMixin )
 			for col in pm.column_ids
 		]
 
+		# Component extractors to be used by the final extractor to compose the edge ID
 		(type_extractor, from_extractor, to_extractor) = (
 			lambda row: extractor ( type_map, row ),
 			lambda row: extractor ( from_map, row ),
 			lambda row: extractor ( to_map, row )
 		)
 
+		# Here it is
 		return cls.from_extractor (
 			extractor = lambda row: cls.build_edge_id (
 				type_extractor ( row ),
@@ -137,6 +146,7 @@ class RowValueMapper ( Mapper ):
 			column_ids = col_ids,
 			value_converter = IdentityValueConverter ()
 		)
+	# /for_edge_id_auto
 
 
 	@classmethod
@@ -179,6 +189,7 @@ class RowValueMapper ( Mapper ):
 		"""
 		if not prefix: prefix = ""
 		return f"{prefix}{relation_type}_{from_id}_{to_id}"
+# /RowValueMapper
 
 
 class RowTripleMapperMixin ( RowValueMapper, PropertyMapperMixin ):
@@ -241,8 +252,8 @@ class RowTripleMapperMixin ( RowValueMapper, PropertyMapperMixin ):
 		return cls.from_extractor ( 
 			extractor, GraphTriple.TO_KEY, column_ids, IdentityValueConverter ()
 		)
+# /RowTripleMapperMixin
 
-		
 
 class ColumnValueMapper ( RowValueMapper ):
 	"""
@@ -284,6 +295,7 @@ class ColumnValueMapper ( RowValueMapper ):
 		This is a convenience property that wraps the first element of :attr:`column_ids`.
 		"""
 		return self.column_ids [ 0 ]
+# /ColumnValueMapper
 
 
 class IdColumnMapper ( ColumnValueMapper ):
@@ -314,6 +326,7 @@ class IdColumnMapper ( ColumnValueMapper ):
 		v = super ().value ( row_dict )
 		if not v: raise ValueError ( f"IdColumnMapper: null/empty ID value for column '{self.column}' in row {row_dict}" )
 		return v
+# /IdColumnMapper
 
 
 class ColumnMapper ( ColumnValueMapper, RowTripleMapperMixin ):
@@ -376,6 +389,7 @@ class ColumnMapper ( ColumnValueMapper, RowTripleMapperMixin ):
 			value_converter = value_converter if value_converter else IdentityValueConverter ( pre_serializers ),
 			pre_serializers = pre_serializers if not value_converter else None
 		)
+# /ColumnMapper
 
 
 class SparkDataFrameMapper:
@@ -494,6 +508,7 @@ class SparkDataFrameMapper:
 		  # Explode the 'triplet' struct into its columns
 
 		return out_df
+# /SparkDataFrameMapper
 
 
 class TabFileMapper:
@@ -632,3 +647,5 @@ class TabFileMapper:
 			DataFrameCheckpointManager.save_intermediate ( triple_df, out_path )
 		
 		return triple_df
+	# /map
+# /TabFileMapper

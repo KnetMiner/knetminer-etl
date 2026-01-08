@@ -54,6 +54,7 @@ def test_checkpoint_manager ():
 		.is_equal_to ( 1 )
 
 	spark.stop()
+# /test_checkpoint_manager
 
 
 @pytest.mark.parametrize (
@@ -131,3 +132,4 @@ def test_checkpoint_manager_repartition ( n_original_partitions: int, n_induced_
 		.is_equal_to ( test_tuples )
 	
 	spark.stop()
+# /test_checkpoint_manager_repartition

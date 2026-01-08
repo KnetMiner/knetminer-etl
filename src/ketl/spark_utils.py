@@ -102,7 +102,7 @@ class DataFrameCheckpointManager:
 	@staticmethod
 	def get_intermediate_check_path ( base_path: str ) -> str:
 		"""
-		Returns a path that can be used to check if the parquet file identifed by the
+		Returns a path that can be used to check if the parquet file identified by the
 		parameter exists.
 
 		This is useful in frameworks like SnakeMake.

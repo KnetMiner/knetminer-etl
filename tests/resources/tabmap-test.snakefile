@@ -1,13 +1,13 @@
 """
-TODO: Comment me!
+A SnakeMake workflow that tests tab mapping.
 
 TODO: try SnakeMake unit test tool: https://snakemake.readthedocs.io/en/stable/snakefiles/testing.html
 
 TODO: Map TSV to edges and put all together. To finish this:
   - Test RowValueMapper.from_extractor() in its own test OK
 	- Review for_from(), for_to() and alike (too many defaults) OK
-	- Finalise snake.py
-	- Bring snake.py here
+	- Finalise snake.py OK
+	- Bring snake.py here OK
 	- Comments
 	- test_infer_schema, test_inconsistent_mappers_on_same_row
 	
@@ -29,6 +29,7 @@ from ketltest.snake import PROTEINS_MAPPER, ENCODING_MAPPER
 KETL_DATA = os.environ [ "KETL_DATA" ] # TODO
 KETL_IN = os.path.abspath ( workflow.basedir )
 KETL_OUT = f"{KETL_DATA}/output"
+KETL_TMP = f"{KETL_DATA}/tmp"
 
 # TODO: factorise it in a config file, fixture or alike
 spark_session = SparkSession.builder\
@@ -39,41 +40,42 @@ spark_session = SparkSession.builder\
 
 # Needs to stay here, not in params, since the dynamic output isn't computed during the 
 # Snakefile parsing.
-mapped_genes_path = f"{KETL_OUT}/genes-triples.parquet"
+mapped_genes_path = f"{KETL_TMP}/genes-triples.parquet"
 mapped_genes_check_path = DataFrameCheckpointManager.get_intermediate_check_path ( 
 	mapped_genes_path
 )
 
-mapped_proteins_path = f"{KETL_OUT}/proteins-triples.parquet"
+mapped_proteins_path = f"{KETL_TMP}/proteins-triples.parquet"
 mapped_proteins_check_path = DataFrameCheckpointManager.get_intermediate_check_path ( 
 	mapped_proteins_path
 )
 
-mapped_encodings_path = f"{KETL_OUT}/encodings-triples.parquet"
+mapped_encodings_path = f"{KETL_TMP}/encodings-triples.parquet"
 mapped_encodings_check_path = DataFrameCheckpointManager.get_intermediate_check_path ( 
 	mapped_encodings_path
 )
 
-pg_path = f"{KETL_OUT}/knowledge-graph.parquet"
-pg_check_path = DataFrameCheckpointManager.get_intermediate_check_path ( 
-	pg_path
+node_pg_path = f"{KETL_TMP}/knowledge-graph.parquet"
+node_pg_check_path = DataFrameCheckpointManager.get_intermediate_check_path ( 
+	node_pg_path
 )
 
 rule all:
 	input:
-		f"{KETL_OUT}/knowledge-graph.json"
+		f"{KETL_OUT}/nodes-pg.json",
+		f"{KETL_OUT}/edges-pg.json"
 
 
-rule triples_2_json_pg:
+rule node_triples_2_json_pg:
 	input:
-		triples_df = pg_check_path
+		triples_df_path = node_pg_check_path
 	output:
-		json_pg = f"{KETL_OUT}/knowledge-graph.json"
+		json_pg = f"{KETL_OUT}/nodes-pg.json"
 	run:
-		pg_df_2_pg_jsonl ( pg_path, spark_session, output.json_pg )
+		pg_df_2_pg_jsonl ( node_pg_path, spark_session, output.json_pg )
 
 
-rule genes_triples_2_pg_df:
+rule node_triples_2_pg_df:
 	"""
 	Builds a single PG DataFrame from multiple triples DataFrames.
 
@@ -82,20 +84,48 @@ rule genes_triples_2_pg_df:
 	input:
 		triples_df = [ mapped_genes_check_path, mapped_proteins_check_path ]
 	output:
-		pg_df = pg_check_path
+		pg_df = node_pg_check_path
 	run:
 		triples_df = None
 		for path in ( mapped_genes_path, mapped_proteins_path ):
 			triples_df = \
-				spark_session.read.parquet ( path ) if triples_df is None \
+				spark_session.read.parquet ( path ) if not triples_df \
 				else triples_df.unionByName ( spark_session.read.parquet ( path ) )
 
 		pg_df = triples_2_pg_df (
 			triples_df,
 			PGElementType.NODE,
 			spark = spark_session,
-			out_path = pg_path
+			out_path = node_pg_path
 		)
+
+
+rule encodings_triples_2_json_pg:
+	"""
+	Builds the PG edges and saves them straight to JSON.
+
+	Here, we have only one triples DF for edges, so we can show the alternative step that merges 
+	the PG dataframe definition and the JSON dump in one rule. The former is lazy, so the performance 
+	doesn't differ much.
+	
+	Presumably, we'll end up having at least one PG builder/exporter per element type (NODE, EDGE), 
+	no matter the option you choose about the PG DF build and JSON dump steps.
+	"""
+
+	input:
+		triples_df_path = mapped_encodings_check_path
+	output:
+		json_pg = f"{KETL_OUT}/edges-pg.json"
+	run:
+		triples_df = spark_session.read.parquet ( mapped_encodings_path )
+
+		pg_df = triples_2_pg_df (
+			triples_df,
+			PGElementType.EDGE,
+			spark = spark_session
+		)
+
+		pg_df_2_pg_jsonl ( pg_df, spark_session, output.json_pg )
 
 
 rule map_gene_tsv:
