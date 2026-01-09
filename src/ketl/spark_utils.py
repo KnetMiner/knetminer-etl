@@ -52,8 +52,8 @@ class DataFrameCheckpointManager:
 		log.info ( f"Saving intermediate DataFrame to {path}" )
 
 
-		size = DataFrameCheckpointManager.get_df_rough_size ( df )
-		new_partitions = DataFrameCheckpointManager._choose_partitions ( size, target_partition_size )
+		size = DataFrameCheckpointManager.df_rough_size ( df )
+		new_partitions = DataFrameCheckpointManager.df_new_partition_size ( size, target_partition_size )
 		current_partitions = df.rdd.getNumPartitions ()
 
 		if new_partitions < current_partitions:
@@ -65,16 +65,16 @@ class DataFrameCheckpointManager:
 		else:
 			log.debug ( f"Keeping current partition count: {current_partitions}" )
 
-		path = DataFrameCheckpointManager.get_intermediate_path ( path )
+		path = DataFrameCheckpointManager.df_path ( path )
 		df.write.mode ( "overwrite" ).parquet ( path )
 		log.info ( f"DataFrame saved" )
 		return df
 
 
 	@staticmethod
-	def load_intermediate ( path_or_df: str | DataFrame, spark: SparkSession ) -> DataFrame:
+	def df_load ( path_or_df: str | DataFrame, spark: SparkSession ) -> DataFrame:
 		"""
-		Loads a dataframe which was saved as an intermediate by :meth:`save_intermediate`.
+		Loads a dataframe which was saved as an intermediate by :meth:`df_save`.
 
 		## Parameters:
 
@@ -98,7 +98,7 @@ class DataFrameCheckpointManager:
 				"when loading from a path." 
 			)
 
-		path = DataFrameCheckpointManager.get_intermediate_path ( path_or_df )
+		path = DataFrameCheckpointManager.df_path ( path_or_df )
 		log.info ( f"Loading intermediate DataFrame from {path}" )
 		df = spark.read.parquet ( path )		
 		log.info ( f"DataFrame loaded" )
@@ -107,7 +107,7 @@ class DataFrameCheckpointManager:
 
 
 	@staticmethod
-	def get_intermediate_check_path ( base_path: str ) -> str:
+	def df_check_path ( base_path: str ) -> str:
 		"""
 		Returns a path that can be used to check if the parquet file identified by the
 		parameter exists.
@@ -123,27 +123,27 @@ class DataFrameCheckpointManager:
 	
 
 	@staticmethod
-	def get_intermediate_path ( intermediate_path: str ) -> str:
+	def df_path ( df_path: str ) -> str:
 		"""
 		Returns the base path that was used to save the intermediate file 
 		(a parquet directory in the current implementation).
 
-		This is used in :meth:`load_intermediate` and :meth:`save_intermediate`, to automatically
+		This is used in :meth:`df_load` and :meth:`df_save`, to automatically
 		retrieve the base path from a check path.
 
-		This is useful in frameworks like SnakeMake, ie, if you use :meth:`get_intermediate_check_path` 
+		This is useful in frameworks like SnakeMake, ie, if you use :meth:`df_check_path` 
 		in rules and then pass this to load/save methods, these will automatically get the base path.
 
 		In practice, this just strips the `/.parquet/_SUCCESS` suffix, if present. If the path is empty
 		or None, just returns it as is.
 		"""
-		if not intermediate_path: return intermediate_path
-		if not intermediate_path.endswith ( "/_SUCCESS" ): return intermediate_path
-		return intermediate_path [ :-len ( "/_SUCCESS" ) ]
+		if not df_path: return df_path
+		if not df_path.endswith ( "/_SUCCESS" ): return df_path
+		return df_path [ :-len ( "/_SUCCESS" ) ]
 
 
 	@staticmethod
-	def get_df_rough_size ( df: DataFrame, sample_ratio: float = 0.1 ) -> int:
+	def df_rough_size ( df: DataFrame, sample_ratio: float = 0.1 ) -> int:
 		"""
 		Estimates a DataFrame size by sampling partitions and using Python memory size.
 		Fast and approximate, sufficient for choosing partition counts.
@@ -181,9 +181,9 @@ class DataFrameCheckpointManager:
 		return estimated_total
 
 
-	def _choose_partitions ( estimated_df_size: int, target_partition_size: int = 256 * 1024 ** 2 ) -> int:
+	def df_new_partition_size ( estimated_df_size: int, target_partition_size: int = 256 * 1024 ** 2 ) -> int:
 		"""
-		Choose a reasonable no of partitions to be used by :meth:`save_intermediate`, so each output file is 
+		Choose a reasonable no of partitions to be used by :meth:`df_save`, so each output file is 
 		~target_partition_size bytes.
 
 		## Parameters:

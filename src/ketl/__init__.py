@@ -403,7 +403,7 @@ def triples_2_pg_df (
 		raise ValueError ( f"triples_2_pg_df(): invalid triples_type: {triples_type}" )
 
 	# The DF that collects the node labels/types
-	triples_df = DataFrameCheckpointManager.load_intermediate ( triples_df_or_path, spark )
+	triples_df = DataFrameCheckpointManager.df_load ( triples_df_or_path, spark )
 
 	type_df = triples_df.filter ( F.col ( "key" ) == GraphProperty.TYPE_KEY )
 	type_labels_df = type_df.groupBy ( "id" ).agg ( F.collect_set ( "value" ).alias ( "labels" ) )
@@ -531,7 +531,7 @@ def pg_df_2_pg_jsonl (
 
 			fh.write ( json.dumps ( pg_elem ) + "\n" )
 	
-	pg_df_or_path = DataFrameCheckpointManager.load_intermediate ( pg_df_or_path, spark )
+	pg_df_or_path = DataFrameCheckpointManager.df_load ( pg_df_or_path, spark )
 
 	if not value_converters: value_converters = {}
 	return dump_output ( writer, out_path )

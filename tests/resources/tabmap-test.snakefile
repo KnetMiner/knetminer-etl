@@ -46,7 +46,7 @@ rule all:
 
 rule node_triples_2_json_pg:
 	input:
-		DataFrameCheckpointManager.get_intermediate_check_path ( f"{KETL_TMP}/nodes-pg.parquet" )
+		DataFrameCheckpointManager.df_check_path ( f"{KETL_TMP}/nodes-pg.parquet" )
 	output:
 		f"{KETL_OUT}/nodes-pg.json"
 	run:
@@ -60,14 +60,14 @@ rule node_triples_2_pg_df:
 	This shows how to do that by unioning DFs.
 	"""
 	input:
-		DataFrameCheckpointManager.get_intermediate_check_path ( f"{KETL_TMP}/gene-triples.parquet" ), 
-		DataFrameCheckpointManager.get_intermediate_check_path ( f"{KETL_TMP}/protein-triples.parquet" )
+		DataFrameCheckpointManager.df_check_path ( f"{KETL_TMP}/gene-triples.parquet" ), 
+		DataFrameCheckpointManager.df_check_path ( f"{KETL_TMP}/protein-triples.parquet" )
 	output:
-		DataFrameCheckpointManager.get_intermediate_check_path ( f"{KETL_TMP}/nodes-pg.parquet" )
+		DataFrameCheckpointManager.df_check_path ( f"{KETL_TMP}/nodes-pg.parquet" )
 	run:
 		triples_df = None
 		for path in input:
-			path = DataFrameCheckpointManager.get_intermediate_path ( path )
+			path = DataFrameCheckpointManager.df_path ( path )
 			triples_df = \
 				spark_session.read.parquet ( path ) if not triples_df \
 				else triples_df.unionByName ( spark_session.read.parquet ( path ) )
@@ -93,12 +93,12 @@ rule encodings_triples_2_json_pg:
 	"""
 
 	input:
-		DataFrameCheckpointManager.get_intermediate_check_path ( f"{KETL_TMP}/encodings-triples.parquet" )
+		DataFrameCheckpointManager.df_check_path ( f"{KETL_TMP}/encodings-triples.parquet" )
 	output:
 		f"{KETL_OUT}/edges-pg.json"
 	run:
 		triples_df = spark_session.read.parquet ( 
-			DataFrameCheckpointManager.get_intermediate_path ( input[0] )
+			DataFrameCheckpointManager.df_path ( input[0] )
 		)
 
 		pg_df = triples_2_pg_df (
@@ -114,7 +114,7 @@ rule map_gene_tsv:
 	input:
 		f"{KETL_IN}/test-genes.tsv"
 	output:
-		DataFrameCheckpointManager.get_intermediate_check_path ( f"{KETL_TMP}/gene-triples.parquet" )
+		DataFrameCheckpointManager.df_check_path ( f"{KETL_TMP}/gene-triples.parquet" )
 	run:
 		"""
 		This is the ugly version. Typically, you'll want to isolate this into 
@@ -146,7 +146,7 @@ rule map_protein_tsv:
 	input:
 		f"{KETL_IN}/test-proteins.tsv"
 	output:
-		DataFrameCheckpointManager.get_intermediate_check_path ( f"{KETL_TMP}/protein-triples.parquet" )
+		DataFrameCheckpointManager.df_check_path ( f"{KETL_TMP}/protein-triples.parquet" )
 	run:
 		"""
 		This imports from a file of mappers/config.
@@ -160,7 +160,7 @@ rule map_encoding_tsv:
 		# allows for mapping the same files to multiple mappers.
 		f"{KETL_IN}/test-proteins.tsv"
 	output:
-		DataFrameCheckpointManager.get_intermediate_check_path ( f"{KETL_TMP}/encodings-triples.parquet" )
+		DataFrameCheckpointManager.df_check_path ( f"{KETL_TMP}/encodings-triples.parquet" )
 	run:
 		# methods like this convert from check path back to base path automatically
 		ENCODING_MAPPER.map ( spark_session, input[0], out_path = output[0] )

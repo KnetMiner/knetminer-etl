@@ -25,11 +25,11 @@ class TestDataFrameCheckpointManager:
 
 		# Let's test this function here, it's so small, not worth a dedicated test
 		assert_that ( 
-			DataFrameCheckpointManager.get_intermediate_check_path ( ckpt_path ),
+			DataFrameCheckpointManager.df_check_path ( ckpt_path ),
 			"The checkpoint file exists" 
 		).exists ()
 		
-		loaded_df = DataFrameCheckpointManager.load_intermediate ( ckpt_path, spark_session )
+		loaded_df = DataFrameCheckpointManager.df_load ( ckpt_path, spark_session )
 
 		# And now check
 
@@ -64,7 +64,7 @@ class TestDataFrameCheckpointManager:
 		Tests :meth:`DataFrameCheckpointManager.get_intermediate_path`
 		"""
 		
-		resolved_path = DataFrameCheckpointManager.get_intermediate_path ( test_path )
+		resolved_path = DataFrameCheckpointManager.df_path ( test_path )
 
 		assert_that ( resolved_path, "Resolved path is correct" )\
 			.is_equal_to ( expected_path )
@@ -83,14 +83,14 @@ class TestDataFrameCheckpointManager:
 		
 		# Save
 		out_path = f"/tmp/ketl_spark_utils_checkpoint_{uuid.uuid4().hex[:8]}.parquet"
-		check_path = DataFrameCheckpointManager.get_intermediate_check_path ( out_path )
+		check_path = DataFrameCheckpointManager.df_check_path ( out_path )
 		DataFrameCheckpointManager.df_save ( test_df, check_path )
 
 		# The out_path must exist
 		assert_that ( out_path, "Output path exists" ).exists ()
 
 		# So, let's try the loading
-		loaded_df = DataFrameCheckpointManager.load_intermediate ( check_path, spark_session )
+		loaded_df = DataFrameCheckpointManager.df_load ( check_path, spark_session )
 
 		# If there is no error, it went fine. Let's check the DF just in case
 		assert_that ( loaded_df.count (), "Reloaded DF has the right cardinality" )\
@@ -127,7 +127,7 @@ class TestDataFrameCheckpointManager:
 		ckpt_path = f"/tmp/ketl_spark_utils_checkpoint_{uuid.uuid4().hex[:8]}.parquet"
 
 		# Induce n_induced_partitions partitions, by using the estimated size and setting an adequate target_partition_size
-		size = DataFrameCheckpointManager.get_df_rough_size ( test_df )
+		size = DataFrameCheckpointManager.df_rough_size ( test_df )
 
 		# It's worth this sanity test
 		assert_that ( size, "Estimated DF size is consistent" )\
@@ -153,7 +153,7 @@ class TestDataFrameCheckpointManager:
 			.is_true ()
 			
 		
-		loaded_df = DataFrameCheckpointManager.load_intermediate ( ckpt_path, spark_session )
+		loaded_df = DataFrameCheckpointManager.df_load ( ckpt_path, spark_session )
 
 		loaded_tuples = set( tuple ( row ) for row in loaded_df.collect () )
 		test_tuples = set( tuple ( row ) for row in test_data )
