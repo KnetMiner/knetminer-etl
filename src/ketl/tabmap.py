@@ -644,7 +644,7 @@ class TabFileMapper:
 			# really happen only upon an actual action like this
 			#
 			log.info ( f"Saving mapped tab file to \"{out_path}\"" )
-			DataFrameCheckpointManager.save_intermediate ( triple_df, out_path )
+			DataFrameCheckpointManager.df_save ( triple_df, out_path )
 		
 		return triple_df
 	# /map

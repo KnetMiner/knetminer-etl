@@ -34,31 +34,9 @@ KETL_TMP = f"{KETL_DATA}/tmp"
 # TODO: factorise it in a config file, fixture or alike
 spark_session = SparkSession.builder\
 	.master ( "local[*]" )\
-	.appName ( "test_tabmap" )\
+	.appName ( "test_tabmap_snake" )\
 	.getOrCreate()		
 
-
-# Needs to stay here, not in params, since the dynamic output isn't computed during the 
-# Snakefile parsing.
-mapped_genes_path = f"{KETL_TMP}/genes-triples.parquet"
-mapped_genes_check_path = DataFrameCheckpointManager.get_intermediate_check_path ( 
-	mapped_genes_path
-)
-
-mapped_proteins_path = f"{KETL_TMP}/proteins-triples.parquet"
-mapped_proteins_check_path = DataFrameCheckpointManager.get_intermediate_check_path ( 
-	mapped_proteins_path
-)
-
-mapped_encodings_path = f"{KETL_TMP}/encodings-triples.parquet"
-mapped_encodings_check_path = DataFrameCheckpointManager.get_intermediate_check_path ( 
-	mapped_encodings_path
-)
-
-node_pg_path = f"{KETL_TMP}/knowledge-graph.parquet"
-node_pg_check_path = DataFrameCheckpointManager.get_intermediate_check_path ( 
-	node_pg_path
-)
 
 rule all:
 	input:
@@ -68,11 +46,11 @@ rule all:
 
 rule node_triples_2_json_pg:
 	input:
-		triples_df_path = node_pg_check_path
+		DataFrameCheckpointManager.get_intermediate_check_path ( f"{KETL_TMP}/nodes-pg.parquet" )
 	output:
-		json_pg = f"{KETL_OUT}/nodes-pg.json"
+		f"{KETL_OUT}/nodes-pg.json"
 	run:
-		pg_df_2_pg_jsonl ( node_pg_path, spark_session, output.json_pg )
+		pg_df_2_pg_jsonl ( input[0], spark_session, output[0] )
 
 
 rule node_triples_2_pg_df:
@@ -82,12 +60,14 @@ rule node_triples_2_pg_df:
 	This shows how to do that by unioning DFs.
 	"""
 	input:
-		triples_df = [ mapped_genes_check_path, mapped_proteins_check_path ]
+		DataFrameCheckpointManager.get_intermediate_check_path ( f"{KETL_TMP}/gene-triples.parquet" ), 
+		DataFrameCheckpointManager.get_intermediate_check_path ( f"{KETL_TMP}/protein-triples.parquet" )
 	output:
-		pg_df = node_pg_check_path
+		DataFrameCheckpointManager.get_intermediate_check_path ( f"{KETL_TMP}/nodes-pg.parquet" )
 	run:
 		triples_df = None
-		for path in ( mapped_genes_path, mapped_proteins_path ):
+		for path in input:
+			path = DataFrameCheckpointManager.get_intermediate_path ( path )
 			triples_df = \
 				spark_session.read.parquet ( path ) if not triples_df \
 				else triples_df.unionByName ( spark_session.read.parquet ( path ) )
@@ -96,7 +76,7 @@ rule node_triples_2_pg_df:
 			triples_df,
 			PGElementType.NODE,
 			spark = spark_session,
-			out_path = node_pg_path
+			out_path = output[0]
 		)
 
 
@@ -113,11 +93,13 @@ rule encodings_triples_2_json_pg:
 	"""
 
 	input:
-		triples_df_path = mapped_encodings_check_path
+		DataFrameCheckpointManager.get_intermediate_check_path ( f"{KETL_TMP}/encodings-triples.parquet" )
 	output:
-		json_pg = f"{KETL_OUT}/edges-pg.json"
+		f"{KETL_OUT}/edges-pg.json"
 	run:
-		triples_df = spark_session.read.parquet ( mapped_encodings_path )
+		triples_df = spark_session.read.parquet ( 
+			DataFrameCheckpointManager.get_intermediate_path ( input[0] )
+		)
 
 		pg_df = triples_2_pg_df (
 			triples_df,
@@ -125,14 +107,14 @@ rule encodings_triples_2_json_pg:
 			spark = spark_session
 		)
 
-		pg_df_2_pg_jsonl ( pg_df, spark_session, output.json_pg )
+		pg_df_2_pg_jsonl ( pg_df, spark_session, output[0] )
 
 
 rule map_gene_tsv:
 	input:
-		tsv = f"{KETL_IN}/test-genes.tsv"
+		f"{KETL_IN}/test-genes.tsv"
 	output:
-		parquet = mapped_genes_check_path
+		DataFrameCheckpointManager.get_intermediate_check_path ( f"{KETL_TMP}/gene-triples.parquet" )
 	run:
 		"""
 		This is the ugly version. Typically, you'll want to isolate this into 
@@ -157,27 +139,28 @@ rule map_gene_tsv:
 			spark_options = { "inferSchema": False }
 		)
 
-		tb_mapper.map ( spark_session, input.tsv, out_path = mapped_genes_path )
+		tb_mapper.map ( spark_session, input[0], out_path = output[0] )
 
 
 rule map_protein_tsv:
 	input:
-		tsv = f"{KETL_IN}/test-proteins.tsv"
+		f"{KETL_IN}/test-proteins.tsv"
 	output:
-		parquet = mapped_proteins_check_path
+		DataFrameCheckpointManager.get_intermediate_check_path ( f"{KETL_TMP}/protein-triples.parquet" )
 	run:
 		"""
 		This imports from a file of mappers/config.
 		"""
-		PROTEINS_MAPPER.map ( spark_session, input.tsv, out_path = mapped_proteins_path )
+		PROTEINS_MAPPER.map ( spark_session, input[0], out_path = output[0] )
 
 
 rule map_encoding_tsv:
 	input:
 		# The 1-1 links to the genes are included in the proteins file, and our framework
 		# allows for mapping the same files to multiple mappers.
-		tsv = f"{KETL_IN}/test-proteins.tsv"
+		f"{KETL_IN}/test-proteins.tsv"
 	output:
-		parquet = mapped_encodings_check_path
+		DataFrameCheckpointManager.get_intermediate_check_path ( f"{KETL_TMP}/encodings-triples.parquet" )
 	run:
-		ENCODING_MAPPER.map ( spark_session, input.tsv, out_path = mapped_encodings_path )
+		# methods like this convert from check path back to base path automatically
+		ENCODING_MAPPER.map ( spark_session, input[0], out_path = output[0] )

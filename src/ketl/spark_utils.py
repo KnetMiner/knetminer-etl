@@ -24,7 +24,7 @@ class DataFrameCheckpointManager:
 	Internally, we perform Spark-specific optimisations, which are kept transparent to the client.
 	"""
 	@staticmethod
-	def save_intermediate ( 
+	def df_save ( 
 		df: DataFrame, path: str, target_partition_size: int = 256 * 1024 ** 2 
 	) -> DataFrame:
 		"""
@@ -40,11 +40,14 @@ class DataFrameCheckpointManager:
 		## Parameters:
 
 		:param df: the DataFrame to save
-		:param path: the path where to save it
+		
+		:param path: the path where to save it. If this is a check path, its actual base path is automatically
+		retrieved using :meth:`get_intermediate_path`.		
+
 		:param target_partition_size: target size of each partition file, in bytes
 
 		:return: the saved DataFrame, which might be a repartitioned/coalesced version of the original one
-		  You won't need this often, we return it mainly to support tests.
+		You won't need this often, we return it mainly to support tests.
 		"""
 		log.info ( f"Saving intermediate DataFrame to {path}" )
 
@@ -62,6 +65,7 @@ class DataFrameCheckpointManager:
 		else:
 			log.debug ( f"Keeping current partition count: {current_partitions}" )
 
+		path = DataFrameCheckpointManager.get_intermediate_path ( path )
 		df.write.mode ( "overwrite" ).parquet ( path )
 		log.info ( f"DataFrame saved" )
 		return df
@@ -77,6 +81,8 @@ class DataFrameCheckpointManager:
 		:param path_or_df: the path where the DataFrame was saved, or just a DF. In the latter 
 		case, we just return the DF, and this option is here for components that take their input
 		from a data frame. That is, they can easily use this helper to start from a path instead.
+		When this is a path, it is passed to :meth:`get_intermediate_path` to automatically retrieve 
+		the actual base path.
 
 		:param spark: the Spark session to use to load the DF from. This is mandatory when 
 		`path_or_df` is a path.
@@ -92,8 +98,9 @@ class DataFrameCheckpointManager:
 				"when loading from a path." 
 			)
 
-		log.info ( f"Loading intermediate DataFrame from {path_or_df}" )
-		df = spark.read.parquet ( path_or_df )		
+		path = DataFrameCheckpointManager.get_intermediate_path ( path_or_df )
+		log.info ( f"Loading intermediate DataFrame from {path}" )
+		df = spark.read.parquet ( path )		
 		log.info ( f"DataFrame loaded" )
 
 		return df
@@ -105,17 +112,40 @@ class DataFrameCheckpointManager:
 		Returns a path that can be used to check if the parquet file identified by the
 		parameter exists.
 
-		This is useful in frameworks like SnakeMake.
+		This is useful in frameworks like SnakeMake, especially when used in combination
+		with loading and saving methods, which automatically invokes :meth:`get_intermediate_path`.
+		In the KETL framework, we do so for all relevant load/save operations (eg, in mappers, PG dumpers).
 
 		In practice, it just returns `${base_path}.parquet/_SUCCESS`, but it allows you
 		to abstract this .parquet-specific detail away.
 		"""
 		return f"{base_path}/_SUCCESS"
+	
+
+	@staticmethod
+	def get_intermediate_path ( intermediate_path: str ) -> str:
+		"""
+		Returns the base path that was used to save the intermediate file 
+		(a parquet directory in the current implementation).
+
+		This is used in :meth:`load_intermediate` and :meth:`save_intermediate`, to automatically
+		retrieve the base path from a check path.
+
+		This is useful in frameworks like SnakeMake, ie, if you use :meth:`get_intermediate_check_path` 
+		in rules and then pass this to load/save methods, these will automatically get the base path.
+
+		In practice, this just strips the `/.parquet/_SUCCESS` suffix, if present. If the path is empty
+		or None, just returns it as is.
+		"""
+		if not intermediate_path: return intermediate_path
+		if not intermediate_path.endswith ( "/_SUCCESS" ): return intermediate_path
+		return intermediate_path [ :-len ( "/_SUCCESS" ) ]
+
 
 	@staticmethod
 	def get_df_rough_size ( df: DataFrame, sample_ratio: float = 0.1 ) -> int:
 		"""
-		Estimate a DataFrame size by sampling partitions and using Python memory size.
+		Estimates a DataFrame size by sampling partitions and using Python memory size.
 		Fast and approximate, sufficient for choosing partition counts.
 
 		## Parameters:

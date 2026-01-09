@@ -37,8 +37,9 @@ def create_spark_session_fixture ():
 
 	spark_session = SparkSession.builder\
 		.master ( "local[*]" )\
-		.appName ( "test_tabmap" )\
-		.getOrCreate()		
+		.appName ( "test_ketl" )\
+		.getOrCreate()
+			
 	yield	spark_session	
 
 	log.info ( "Stopping Spark session for tests" )

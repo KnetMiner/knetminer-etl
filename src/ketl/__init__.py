@@ -467,7 +467,7 @@ def triples_2_pg_df (
 
 	# Save if requested
 	if out_path:
-		DataFrameCheckpointManager.save_intermediate ( result_df, out_path )
+		DataFrameCheckpointManager.df_save ( result_df, out_path )
 
 	# Eventually!
 	return result_df
