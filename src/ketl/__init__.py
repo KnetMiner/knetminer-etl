@@ -262,7 +262,7 @@ class Mapper ( ABC ):
 		```
 
 		:attr:`spark_data_type` is an optional Spark data type to be used in tasks like
-			reading from a CSV. Essentially, it allows for setting an explicit schema.
+		reading from a CSV. Essentially, it allows for setting an explicit schema.
 
 		TODO: StructType.nullable
 		"""
