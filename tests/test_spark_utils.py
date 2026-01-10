@@ -5,7 +5,7 @@ import pytest
 from assertpy import assert_that
 from pyspark.sql import SparkSession
 
-from ketl.spark_utils import df_save, df_load, df_check_path, df_path, df_rough_size, df_new_partition_size
+from ketl.spark_utils import df_save, df_load, df_check_path, df_path, df_rough_size
 
 log = logging.getLogger ( __name__ )
 

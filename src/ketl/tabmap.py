@@ -1,10 +1,10 @@
 """
 Tabular/CSV mapping tools for KnetMiner ETLs
-
 """
-from abc import abstractmethod
+
 import logging
-from typing import Any, Dict, TypeVar
+from abc import abstractmethod
+from typing import Any, Dict
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import explode, udf
@@ -13,7 +13,7 @@ from pyspark.sql.types import (ArrayType, DataType, StringType, StructField,
 
 from ketl import (ConstantPropertyMapper, GraphTriple, IdentityValueConverter,
                   Mapper, PreSerializers, PropertyMapperMixin, ValueConverter)
-from ketl.spark_utils import df_save, df_load, df_check_path, df_path, df_rough_size, df_new_partition_size
+from ketl.spark_utils import df_save
 
 log = logging.getLogger ( __name__ )
 
@@ -49,7 +49,6 @@ class RowValueMapper ( Mapper ):
 		"""
 		The method that does the job of mapping a row to a value.
 		"""
-		pass
 
 	
 	@classmethod

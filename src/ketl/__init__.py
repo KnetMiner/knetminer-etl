@@ -7,16 +7,16 @@ Much of the implemented functionality is based on Spark.
 
 import json
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Callable, TextIO
 
-from dataclasses import dataclass
 from brandizpyes.ioutils import dump_output
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import DataType
 
-from ketl.spark_utils import df_save, df_load, df_check_path, df_path, df_rough_size, df_new_partition_size
+from ketl.spark_utils import (df_load, df_save)
 
 
 @dataclass ( frozen = True )
