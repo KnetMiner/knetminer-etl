@@ -16,7 +16,7 @@ from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 from pyspark.sql.types import DataType
 
-from ketl.spark_utils import DataFrameCheckpointManager
+from ketl.spark_utils import df_save, df_load, df_check_path, df_path, df_rough_size, df_new_partition_size
 
 
 @dataclass ( frozen = True )
@@ -380,8 +380,8 @@ def triples_2_pg_df (
 	:param spark: when `triples_df_or_path` is a path, the Spark session used to load the Parquet file 
 	(mandatory param in that case).
 
-	:param out_path: optional path where to save the resulting DataFrame as a Parquet file, through
-	:class:`ketl.spark_utils.DataFrameCheckpointManager`.
+	:param out_path: optional path where to save the resulting DataFrame as a Parquet file, using
+	the checkpointing functions in `ketl.spark_utils`.
 		
 	## Returns:
 	A data frame reflecting the structure of PG-Format, ie, with the columns:
@@ -403,7 +403,7 @@ def triples_2_pg_df (
 		raise ValueError ( f"triples_2_pg_df(): invalid triples_type: {triples_type}" )
 
 	# The DF that collects the node labels/types
-	triples_df = DataFrameCheckpointManager.df_load ( triples_df_or_path, spark )
+	triples_df = df_load ( triples_df_or_path, spark )
 
 	type_df = triples_df.filter ( F.col ( "key" ) == GraphProperty.TYPE_KEY )
 	type_labels_df = type_df.groupBy ( "id" ).agg ( F.collect_set ( "value" ).alias ( "labels" ) )
@@ -467,7 +467,7 @@ def triples_2_pg_df (
 
 	# Save if requested
 	if out_path:
-		DataFrameCheckpointManager.df_save ( result_df, out_path )
+		df_save ( result_df, out_path )
 
 	# Eventually!
 	return result_df
@@ -531,7 +531,7 @@ def pg_df_2_pg_jsonl (
 
 			fh.write ( json.dumps ( pg_elem ) + "\n" )
 	
-	pg_df_or_path = DataFrameCheckpointManager.df_load ( pg_df_or_path, spark )
+	pg_df_or_path = df_load ( pg_df_or_path, spark )
 
 	if not value_converters: value_converters = {}
 	return dump_output ( writer, out_path )
