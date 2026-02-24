@@ -5,7 +5,7 @@ import warnings
 import pytest
 from assertpy import assert_that
 from pyspark.sql import DataFrame
-from pyspark.sql.types import IntegerType
+from pyspark.sql.types import IntegerType, StringType
 
 from ketl import ConstantPropertyMapper, GraphTriple, IdentityValueConverter
 from ketl.spark_utils import assertDataFrameEqualX
@@ -28,8 +28,8 @@ class TestRowValueMapper:
 			.is_equal_to ( '"' + extractor ( row ) + '"' )
 		
 	@pytest.mark.parametrize ( 
-		"prefix",
-		[ None, "test:" ],
+		argnames = "prefix",
+		argvalues = [ None, "test:" ],
 		ids = [ "regular", "with-prefix" ]
 	)
 	def test_for_edge_id ( self, prefix ):
@@ -51,8 +51,8 @@ class TestRowValueMapper:
 			.is_equal_to ( expected_value )
 		
 	@pytest.mark.parametrize ( 
-		"prefix",
-		[ None, "test:" ],
+		argnames = "prefix",
+		argvalues = [ None, "test:" ],
 		ids = [ "regular", "with-prefix" ]
 	)
 	def test_for_edge_id_auto ( self, prefix ):
@@ -417,8 +417,15 @@ class TestSparkDataFrameMapper:
 
 @pytest.mark.usefixtures ( "spark_session" )
 class TestTabFileMapper:
-	def	test_mapping_tsv ( self, spark_session ):
 
+	@pytest.mark.parametrize ( 
+		ids = [ "without schema inference", "with schema inference" ],
+		argnames = "is_infer_schema", 
+		argvalues = [ False, True ], 
+	)
+	def	test_mapping_tsv ( self, spark_session, is_infer_schema: bool ):
+		int_spark_data_type = IntegerType () if not is_infer_schema else None
+		
 		# This also shows how a configuration in a real case would look like.
 		# A config file might define a constant like tb_mapper here and then this
 		# might be imported by a Snakemake file and used together with the call
@@ -430,14 +437,14 @@ class TestTabFileMapper:
 				ColumnMapper ( column_id = "name", property = "hasGeneName" ),
 				ColumnMapper ( "accession", "hasAccession" ),
 				ColumnMapper ( "chromosome", "hasChromosomeId" ),
-				ColumnMapper ( "begin", "hasChromosomeBegin", spark_data_type = IntegerType () ),
-				ColumnMapper ( "end", "hasChromosomeEnd", spark_data_type = IntegerType () )
+				ColumnMapper ( "begin", "hasChromosomeBegin", spark_data_type = int_spark_data_type ),
+				ColumnMapper ( "end", "hasChromosomeEnd", spark_data_type = int_spark_data_type )
 			],
 			const_prop_mappers = [
 				ConstantPropertyMapper.for_type ( "Gene" ),
 				ConstantPropertyMapper ( property = "source", constant_value = "TestTSV" )
 			],
-			spark_options = { "inferSchema": False }
+			spark_options = { "inferSchema": is_infer_schema }
 		)
 
 		test_file_path = os.path.dirname ( os.path.abspath ( __file__ ) ) + "/resources/test-genes.tsv"		
@@ -473,6 +480,7 @@ class TestTabFileMapper:
 			"hasAccession": f'"{test_id}"',
 			"hasGeneName": '"EGFR"',
 			"hasChromosomeId": '"7C"',
+			# These must be integer even when inferSchema is True and we haven't set any type in the mappers
 			"hasChromosomeBegin": "55019017",
 			"hasChromosomeEnd": "55211628",
 			GraphTriple.TYPE_KEY: "Gene",
@@ -484,10 +492,31 @@ class TestTabFileMapper:
 	# /test_mapping_tsv
 
 
-	def test_infer_schema ( self, spark_session ):
-		warnings.warn ( "TODO: implement me!" )
-
-
 	def test_inconsistent_mappers_on_same_row ( self, spark_session ):
-		warnings.warn ( "TODO: implement me!" )
+		tb_mapper = TabFileMapper (
+			id_mapper = IdColumnMapper ( column_id = "accession" ),	
+			row_mappers = [
+				ColumnMapper ( column_id = "name", property = "hasGeneName" ),
+				ColumnMapper ( "accession", "hasAccession" ),
+				ColumnMapper ( "chromosome", "hasChromosomeId" ),
+				ColumnMapper ( "begin", "hasChromosomeBegin", spark_data_type = IntegerType () ),
+				ColumnMapper ( "end", "hasChromosomeEnd", spark_data_type = IntegerType () ),
+				# add the same column mapped to a different type, to cause an error
+				ColumnMapper ( "begin", "hasChromosomeBeginStr", spark_data_type = StringType () )
+			],
+			const_prop_mappers = [
+				ConstantPropertyMapper.for_type ( "Gene" ),
+				ConstantPropertyMapper ( property = "source", constant_value = "TestTSV" )
+			],
+			# spark_options = { "inferSchema": True } should be implicit
+		)
+
+		test_file_path = os.path.dirname ( os.path.abspath ( __file__ ) ) + "/resources/test-genes.tsv"
+		# Should raise ValueError, let's check with assertpy
+		assert_that ( 
+			lambda: tb_mapper.map ( spark_session, test_file_path ), 
+			"map() raises a ValueError over inconsistent mappers"
+		).raises ( ValueError )
+	# /test_inconsistent_mappers_on_same_row
+
 # /TestTabFileMapper

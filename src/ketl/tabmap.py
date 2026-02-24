@@ -574,7 +574,7 @@ class TabFileMapper:
 
 		## Notes
 
-		* The "inferSchema" option and :attr:`ketl.Mapper.spark_data_type`: no matter, the value of this option,
+		* The "inferSchema" option and :attr:`ketl.Mapper.spark_data_type`: independently of the value of this option,
 		  we always load the columns in the mappers only, discarding any other columns that may be in the file.
 			If this option is false, we additionally use the :attr:`ketl.Mapper.spark_data_type` attributes to
 			cast the original columns to the desired types. If a column mapper doesn't have this attribute set,

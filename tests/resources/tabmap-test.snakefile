@@ -1,17 +1,19 @@
 """
 A SnakeMake workflow that tests tab mapping.
 
-TODO: try SnakeMake unit test tool: https://snakemake.readthedocs.io/en/stable/snakefiles/testing.html
 
 TODO: Map TSV to edges and put all together. To finish this:
   - Test RowValueMapper.from_extractor() in its own test OK
 	- Review for_from(), for_to() and alike (too many defaults) OK
 	- Finalise snake.py OK
 	- Bring snake.py here OK
-	- Comments
-	- test_infer_schema, test_inconsistent_mappers_on_same_row
-	
+	- Comments OK
+	- automate the test of this file, start from:
+	  `PYTHONPATH=tests KETL_DATA=/tmp/ketl poetry run snakemake -s tests/resources/tabmap-test.snakefile --cores all`
+		Then check `$KETL_DATA/output`
+	- test_infer_schema, test_inconsistent_mappers_on_same_row OK
 TODO: Neo4j loader
+TODO: migrate from AgriSchemas ETL utils
 """
 
 from pyspark.sql import SparkSession
