@@ -13,3 +13,7 @@ In turn, we use an intermediate representation, consisting of [graph triples](sr
 We use [Spark](https://spark.apache.org/) and [SnakeMake](https://snakemake.readthedocs.io/en/stable/) to support most of the ETL tasks.
 
 TODO: write much more! :-)
+
+## Requirements for development
+* Python >= 3.14 (TODO: relax?)
+* Poetry

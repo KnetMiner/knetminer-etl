@@ -535,4 +535,3 @@ def pg_df_2_pg_jsonl (
 
 	if not value_converters: value_converters = {}
 	return dump_output ( writer, out_path )
-

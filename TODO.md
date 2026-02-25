@@ -1,7 +1,5 @@
-* Add an end-to-end test (not just static JSON DF)
-* Add all the wiring (CSV loading, support to SnakeMake, SnakeMake examples)
-  * Almost done, SnakeMake test to be added.
-
+* Mark relevant tests as integration tests, via `@pytest.mark.integration`
+* Neo4j loader
+* migrate from AgriSchemas ETL utils
 * Factorise the root module?
-
-* CI 
+* CI
