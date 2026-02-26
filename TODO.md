@@ -3,3 +3,4 @@
 * migrate from AgriSchemas ETL utils
 * Factorise the root module?
 * CI
+* isort and other code quality tools
