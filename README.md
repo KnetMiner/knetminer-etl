@@ -15,5 +15,7 @@ We use [Spark](https://spark.apache.org/) and [SnakeMake](https://snakemake.read
 TODO: write much more! :-)
 
 ## Requirements for development
-* Python >= 3.14 (TODO: relax?)
+* Python
 * Poetry
+* Apache Spark (and Java)
+* Other dependencies are [auto-installed by Poetry](pyproject.toml)
