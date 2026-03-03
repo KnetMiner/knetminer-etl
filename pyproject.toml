@@ -1,6 +1,6 @@
 [project]
 name = "knetminer-etl"
-version = "0.1.0"
+version = "1.0.0"
 description = "KnetMiner ETL tools for Knowledge Graph building"
 authors = [
     {name = "Marco Brandizi",email = "marco.brandizi@gmail.com"}
