@@ -1,6 +1,5 @@
 import logging
 import os
-import warnings
 
 import pytest
 from assertpy import assert_that
@@ -9,7 +8,8 @@ from pyspark.sql.types import IntegerType, StringType
 
 from ketl import ConstantPropertyMapper, GraphTriple, IdentityValueConverter
 from ketl.spark_utils import assertDataFrameEqualX
-from ketl.tabmap import (ColumnMapper, ColumnValueMapper, IdColumnMapper, RowTripleMapperMixin, RowValueMapper,
+from ketl.tabmap import (ColumnMapper, ColumnValueMapper, IdColumnMapper,
+                         RowTripleMapperMixin, RowValueMapper,
                          SparkDataFrameMapper, TabFileMapper)
 
 log = logging.getLogger ( __name__ )
@@ -218,6 +218,7 @@ class TestColumnMapper:
 # /TestColumnMapper
 
 
+@pytest.mark.integration
 @pytest.mark.usefixtures ( "spark_session" )
 class TestSparkDataFrameMapper:
 
@@ -415,6 +416,7 @@ class TestSparkDataFrameMapper:
 	# /test_auto_edge_id
 # /TestSparkDataFrameMapper
 
+@pytest.mark.integration
 @pytest.mark.usefixtures ( "spark_session" )
 class TestTabFileMapper:
 

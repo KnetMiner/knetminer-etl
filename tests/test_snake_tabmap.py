@@ -4,15 +4,16 @@ uses the most common features of the module.
 """
 
 import json
+import os
+import subprocess
+
+import pytest
 from assertpy import assert_that
 from deepdiff import DeepDiff
 
-import subprocess
-import os
-import pytest
-
 KETL_DATA_DIR_PATH = "/tmp/ketl"
 
+@pytest.mark.integration
 def test_snake_tabmap_nodes ():
 
 	out_nodes_path = KETL_DATA_DIR_PATH + "/output/nodes-pg.json"
@@ -28,6 +29,7 @@ def test_snake_tabmap_nodes ():
 	check_tabmap_out_file ( out_nodes_path, test_entry, expected_size = 15, type_str = "node" )
 	
 
+@pytest.mark.integration
 def test_snake_tabmap_edges ():
 	out_edges_path = KETL_DATA_DIR_PATH + "/output/edges-pg.json"
 

@@ -185,6 +185,7 @@ class SparkBasedTestCase:
 # /SparkBasedTestCase
 
 
+@pytest.mark.integration
 class TestTriples2PgDf ( SparkBasedTestCase ):
 	"""
 	Tests for :py:func:`ketl.triples_2_pg_df()`.
@@ -361,6 +362,7 @@ class TestTriples2PgDf ( SparkBasedTestCase ):
 # /TestTriples2PgDf
 
 
+@pytest.mark.integration
 class TestPgDf2PgJSONL ( SparkBasedTestCase ):
 	"""
 	Tests for :py:func:`ketl.pg_df_2_pg_jsonl()`.

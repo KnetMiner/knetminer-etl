@@ -3,8 +3,8 @@ A sample/test config of tab mappers, to be used in an ETL workflow.
 See tests/resources/tabmap-test.snakefile
 
 """
-from ketl.tabmap import TabFileMapper, IdColumnMapper, ColumnMapper
 from ketl import ConstantPropertyMapper
+from ketl.tabmap import ColumnMapper, IdColumnMapper, TabFileMapper
 
 PROTEINS_MAPPER = TabFileMapper (
 	id_mapper = IdColumnMapper ( column_id = "accession" ),	

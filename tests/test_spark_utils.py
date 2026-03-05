@@ -5,12 +5,14 @@ import pytest
 from assertpy import assert_that
 from pyspark.sql import SparkSession
 
-from ketl.spark_utils import df_save, df_load, df_check_path, df_path, df_rough_size
+from ketl.spark_utils import (df_check_path, df_load, df_path, df_rough_size,
+                              df_save)
 
 log = logging.getLogger ( __name__ )
 
 
-def test_saving_n_loading ( spark_session: SparkSession ):
+@pytest.mark.integration
+def test_saving_n_loading_df ( spark_session: SparkSession ):
 	test_data = [ (1, "Alice"), (2, "Bob"), (3, "Cathy") ]
 	test_headers = [ "id", "name" ]
 	test_df = spark_session.createDataFrame ( test_data, test_headers )
@@ -56,9 +58,9 @@ def test_saving_n_loading ( spark_session: SparkSession ):
 		( None, None )
 	]
 )
-def test_get_intermediate_path ( test_path, expected_path ):
+def test_df_path ( test_path, expected_path ):
 	"""
-	Tests :meth:`DataFrameCheckpointManager.get_intermediate_path`
+	Tests :meth:`DataFrameCheckpointManager.df_path`
 	"""
 	
 	resolved_path = df_path ( test_path )
@@ -67,10 +69,11 @@ def test_get_intermediate_path ( test_path, expected_path ):
 		.is_equal_to ( expected_path )
 
 
+@pytest.mark.integration
 def test_check_path_auto_conversion ( spark_session: SparkSession ):
 	"""
-	Tests that :meth:`DataFrameCheckpointManager.save_intermediate` and
-	:meth:`DataFrameCheckpointManager.load_intermediate` work correctly when they're given a check path
+	Tests that :fun:`df_check_path` and
+	:fun:`df_load` work correctly when they're given a check path
 	as input/output path.
 	"""
 	
@@ -94,6 +97,7 @@ def test_check_path_auto_conversion ( spark_session: SparkSession ):
 		.is_equal_to ( test_df.count () )
 	
 
+@pytest.mark.integration
 @pytest.mark.parametrize (
 	ids = [ "reduce", "increase" ],
 	argnames = "n_original_partitions, n_induced_partitions",
@@ -103,7 +107,7 @@ def test_checkpoint_manager_repartition (
 	n_original_partitions: int, n_induced_partitions: int, spark_session: SparkSession
 ):
 	"""
-	Tests that internally, :meth:`DataFrameCheckpointManager.save_intermediate` repartitions 
+	Tests that internally, :fun:`df_save` repartitions 
 	a DF, either by reducing the partitions or increasing them, depending on the original
 	DF size.
 
@@ -111,7 +115,7 @@ def test_checkpoint_manager_repartition (
 	:param n_original_partitions: number of partitions to create the original DF with
 
 	:param n_induced_partitions: number of partitions to induce when 
-		:meth:`DataFrameCheckpointManager.save_intermediate` computes the no of partitions for
+		:fun:`df_save` computes the no of partitions for
 		the saved DF (see the test implementation for details)
 	"""	
 	# Create a DF with many partitions

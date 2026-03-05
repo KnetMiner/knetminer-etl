@@ -29,6 +29,9 @@ dev = [
     "tabulate (>=0.9.0,<0.10.0)",
     "pytest (>=9.0.1,<10.0.0)",
     "assertpy (>=1.1,<2.0)",
+    # autoflake and isort are useful when you want to clean up the code
+    # Currently, there is no automation in this project to do so, since I prefer to do it manually
+    # from time to time.
     "autoflake (>=2.3.1,<3.0.0)",
     "isort (>=7.0.0,<8.0.0)",
     "snakemake (>=9.14.5,<10.0.0)",
@@ -37,6 +40,9 @@ dev = [
 
 [tool.pytest.ini_options]
 addopts = [ "-v" ]
+markers = [
+    "integration: integration tests (use -m '[not] integration')"
+]
 
 # Not needed, we have out own logger setup in conftest.py
 # Use pytest --capture=no to see logs on the console and printed diagnostics
