@@ -1,16 +1,15 @@
-import logging
-import sys
 import json
-
+import logging
 import pprint
+import sys
 
 import pytest
 from assertpy import assert_that
-from pyspark.sql import SparkSession
-from ketl import GraphProperty, GraphTriple, PGElementType
-from ketl.io import triples_2_pg_df, pg_df_2_pg_jsonl
 from ketltest.utils import forward_spark_session_fixture
+from pyspark.sql import SparkSession
 
+from ketl import GraphTriple, PGElementType
+from ketl.io import pg_df_2_pg_jsonl, triples_2_pg_df
 
 log = logging.getLogger ( __name__ )
 

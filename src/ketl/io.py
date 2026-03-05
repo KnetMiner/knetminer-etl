@@ -1,10 +1,13 @@
-from brandizpyes.ioutils import dump_output
-from typing import TextIO
-from ketl import GraphProperty, JSONBasedValueConverter, PGElementType, ValueConverter
-from ketl.spark_utils import df_load, df_save
 import json
+from typing import TextIO
 
-from pyspark.sql import DataFrame, SparkSession, functions as F
+from brandizpyes.ioutils import dump_output
+from pyspark.sql import DataFrame, SparkSession
+from pyspark.sql import functions as F
+
+from ketl import (GraphProperty, JSONBasedValueConverter, PGElementType,
+                  ValueConverter)
+from ketl.spark_utils import df_load, df_save
 
 
 def triples_2_pg_df (

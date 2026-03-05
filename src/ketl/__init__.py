@@ -14,7 +14,6 @@ from typing import Any, Callable
 from pyspark.sql.types import DataType
 
 
-
 @dataclass ( frozen = True )
 class GraphProperty:
 	"""
