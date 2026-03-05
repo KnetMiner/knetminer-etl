@@ -43,6 +43,7 @@ addopts = [ "-v" ]
 markers = [
     "integration: integration tests (use -m '[not] integration')"
 ]
+pythonpath = [ "tests" ] # to import helpers like ketltest.utils
 
 # Not needed, we have out own logger setup in conftest.py
 # Use pytest --capture=no to see logs on the console and printed diagnostics
