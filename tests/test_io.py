@@ -1,15 +1,21 @@
+import asyncio
 import json
 import logging
 import pprint
+import random
 import sys
+from typing import AsyncGenerator, Generator
 
+import neo4j
 import pytest
 from assertpy import assert_that
 from ketltest.utils import forward_spark_session_fixture
 from pyspark.sql import SparkSession
 
 from ketl import GraphTriple, PGElementType
-from ketl.io import pg_df_2_pg_jsonl, triples_2_pg_df
+from ketl.io import pg_df_2_pg_jsonl, pg_jsonl_neo_loader, triples_2_pg_df
+
+from testcontainers.neo4j import Neo4jContainer
 
 log = logging.getLogger ( __name__ )
 
@@ -306,3 +312,123 @@ class TestPgDf2PgJSONL ():
 		assert_that ( e003_descriptions, "Edge E003 has correct 'description' property" )\
 			.contains ( "Inferred relationship" )
 # /TestPgDf2PgJSONL
+
+
+@pytest.fixture ( scope="module" )
+def neo4j_container():
+	"""
+	The test container common to all driver fixtures and all the tests.
+	"""
+	with Neo4jContainer() as container:
+		yield container
+
+
+@pytest.fixture ( scope = "module" )
+def async_neo_driver ( neo4j_container ) -> Generator[ neo4j.AsyncDriver, None, None ]:
+	"""
+	Yields a driver connected to the test container.	
+	"""
+	url = neo4j_container.get_connection_url()
+	driver = neo4j.AsyncGraphDatabase.driver ( 
+		url,
+		auth = ( neo4j_container.username, neo4j_container.password )
+	)
+	try:
+		yield driver	
+	finally:
+		try: 
+			asyncio.get_event_loop().run_until_complete ( driver.close() )
+		except RuntimeError:
+			log.warning ( "Event loop already closed skipping test driver closure, hope it's fine" )
+
+
+@pytest.fixture ( scope = "module" )
+def neo_driver ( neo4j_container ) -> Generator[ neo4j.Driver, None, None ]:
+	"""
+	Yields a driver connected to the test container.	
+	"""
+	yield neo4j_container.get_driver ()
+
+
+@pytest.mark.integration
+def test_pg_jsonl_neo_loader_nodes ( async_neo_driver: neo4j.AsyncDriver, neo_driver: neo4j.Driver ):
+	"""
+	Tests for :py:func:`ketl.pg_jsonl_neo_loader()`.
+
+	It uses the async driver with the loader and the sync one to verify the results via Cypher.
+
+	TODO: still missing:
+	- logs
+	- edges
+	- actual batching (and performance)
+	- singleton->single values, not lists
+	- OK multiple labels
+	- move from io to its own module, and add CLI wrapper to it
+	- get rid of neo warnings
+	- neo retries
+	"""
+
+	# Coming from the output of pg_df_2_pg_jsonl() 
+	pg_nodes = [
+		{"type": "node", "id": "ENSMBL0005", "labels": ["Gene"], "properties": {"hasAccession": ["ENSMBL0005"], "source": ["SnakeTest"], "hasChromosomeId": ["10E"], "hasChromosomeEnd": [87971930], "hasGeneName": ["PTEN"], "hasChromosomeBegin": [87863119]}},
+		{"type": "node", "id": "ENSMBL0007", "labels": ["Gene"], "properties": {"hasAccession": ["ENSMBL0007"], "source": ["SnakeTest"], "hasChromosomeId": ["12G"], "hasChromosomeEnd": [25250930], "hasGeneName": ["KRAS"], "hasChromosomeBegin": [25205246]}},
+		{"type": "node", "id": "QA06", "labels": ["Protein"], "properties": {"hasAccession": ["QA06"], "hasProteinName": ["PTEN", "APC"], "source": ["SnakeTest"]}}
+	]
+	pg_nodes_str = "\n".join ( json.dumps ( node ) for node in pg_nodes )
+
+	n_nodes = pg_jsonl_neo_loader (
+		pg_jsonl_source = (pg_nodes_str, None),
+		neo_driver = async_neo_driver
+	)
+
+	assert_that ( n_nodes, "Return value from the loader is correct" ).is_equal_to ( len ( pg_nodes ) )
+
+	# Verify via Cypher
+	for node in pg_nodes:
+		cy_labels = ":".join ( [ f"`{label}`" for label in node[ "labels" ] ] )
+		node_query = f"""
+		MATCH (n:{cy_labels} {{ id: '{node[ "id" ]}' }})
+		RETURN n
+		"""
+		with neo_driver.session() as session:
+			result = session.run ( node_query )
+			record = result.single()
+			assert_that ( record, f"Node {node['id']} is found in the database" ).is_not_none ()
+			db_node = record[ "n" ]
+			assert_that ( db_node.labels, f"Node {node['id']} has correct labels in the database" )\
+				.contains_only ( *node[ "labels" ] )
+			for prop_key, prop_values in node[ "properties" ].items():
+				assert_that ( db_node.get ( prop_key ), f"Node {node['id']} has property '{prop_key}' in the database" ).is_not_none ()
+				assert_that ( set ( db_node.get ( prop_key ) ), f"Node {node['id']} has correct values for property '{prop_key}' in the database" )\
+					.is_equal_to ( set ( prop_values ) )
+
+def test_pg_jsonl_large_stream ( async_neo_driver: neo4j.AsyncDriver, neo_driver: neo4j.Driver ):
+	input_size = 50000
+	# The input is a stream and not a file, the internal reader is flexible with various input sources
+	nodes_stream = ( 
+		json.dumps ( {"type": "node", "id": f"N{i}", "labels": ["TestNode"], "properties": {"index": [i]} } ) 
+		for i in range ( input_size )
+	)
+	n_nodes = pg_jsonl_neo_loader (
+		pg_jsonl_source = (nodes_stream, None),
+		neo_driver = async_neo_driver
+	)
+
+	assert_that ( n_nodes, "Return value from the loader is correct" ).is_equal_to ( input_size )
+
+	# Cypher count is right
+	with neo_driver.session() as session:
+		result = session.run ( "MATCH (n:TestNode) RETURN count(n) AS count" )
+		record = result.single()
+		assert_that ( record, "Count query returns a record" ).is_not_none ()
+		count = record[ "count" ]
+		assert_that ( count, "Count of loaded nodes in the database is correct" ).is_equal_to ( input_size )
+
+		# And some expected nodes are there
+		n_tests = 10
+		n_test_win_size = input_size // n_tests
+		for n_win in range ( 0, input_size, n_test_win_size ):
+			n_id = random.randint ( n_win, n_win + n_test_win_size - 1 )
+			result = session.run ( f"MATCH (n:TestNode {{ id: 'N{n_id}' }}) RETURN n" )
+			record = result.single()
+			assert_that ( record, f"Node N{n_id} is found in the database" ).is_not_none ()

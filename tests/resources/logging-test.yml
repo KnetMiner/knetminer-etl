@@ -45,3 +45,11 @@ root:
 loggers:
   py4j:
     level: INFO
+  neo4j:
+    level: INFO
+  docker:
+    level: INFO
+  urllib3:
+    level: INFO
+  testcontainers:
+    level: INFO

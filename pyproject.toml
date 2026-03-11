@@ -11,7 +11,8 @@ requires-python = "^3.14"
 dependencies = [
     "pyspark (>=4.0.1,<5.0.0)",
     "py4j (>=0.10.9.9,<0.11.0.0)", # TODO: remove? Isn't implied by pyspark?
-    "brandizpyes (>=1.1.0,<2.0.0)"
+    "brandizpyes (>=2.0.0,<3.0.0)",
+    "neo4j (>=6.1.0,<7.0.0)"
 ]
 
 [build-system]
@@ -36,6 +37,7 @@ dev = [
     "isort (>=7.0.0,<8.0.0)",
     "snakemake (>=9.14.5,<10.0.0)",
     "deepdiff (>=8.6.1,<9.0.0)",
+    "testcontainers[neo4j] (>=4.14.1,<5.0.0)",
 ]
 
 [tool.pytest.ini_options]
@@ -44,6 +46,14 @@ markers = [
     "integration: integration tests (use -m '[not] integration')"
 ]
 pythonpath = [ "tests" ] # to import helpers like ketltest.utils
+# Skips warning from 3rd party libs, such as rdflib
+filterwarnings = [
+  "once",
+  "ignore",
+  "default::Warning:ketl\\..*",
+  "default::Warning:test_\\..*"
+]
+
 
 # Not needed, we have out own logger setup in conftest.py
 # Use pytest --capture=no to see logs on the console and printed diagnostics

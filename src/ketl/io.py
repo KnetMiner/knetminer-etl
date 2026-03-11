@@ -1,13 +1,27 @@
+import asyncio
+from itertools import islice
 import json
-from typing import TextIO
+import logging
+from pathlib import Path
+from typing import Any, Callable, Iterable, TextIO
 
-from brandizpyes.ioutils import dump_output
+from brandizpyes.io import dump_output
+import concurrent
+import neo4j
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
 from ketl import (GraphProperty, JSONBasedValueConverter, PGElementType,
                   ValueConverter)
 from ketl.spark_utils import df_load, df_save
+
+import neo4j
+import os
+
+from brandizpyes.io import reader_helper
+from brandizpyes.logging import ProgressLogger
+
+log = logging.getLogger ( __name__ )
 
 
 def triples_2_pg_df (
@@ -183,3 +197,147 @@ def pg_df_2_pg_jsonl (
 
 	if not value_converters: value_converters = {}
 	return dump_output ( writer, out_path )
+
+
+def pg_jsonl_neo_loader ( 
+	pg_jsonl_source: str|Path|Iterable[str]|tuple[ str|Path|TextIO|Iterable[str],str|Path|TextIO|Iterable[str] ],		
+	neo_driver: neo4j.AsyncDriver,
+	loader_batch_size: int = 2500,
+	loader_max_concurrency: int = max ( 1, os.cpu_count() - 1 )
+) -> int:
+	"""
+	Loads a JSONL/PG file (see :func:`ketl.pg_df_2_pg_jsonl`) into a Neo4j database, through the provided driver.
+
+	The function assumes the database is empty (or at least, not having nodes/edges in the sources), it first loads
+	the nodes and then the edges, which must refer loaded nodes.
+
+	The loading is done in parallel and in batches of graph elements.
+	
+	## Parameters:
+
+	- pg_jsonl_source: the source of the JSONL/PG data.It can be a single `Path` object, or a tuple of two 
+	sources, where the first element is the source for nodes and the second for edges.
+	When a single source is given, it's interpreted as the prefix to two files, with suffixes 
+	'-nodes.jsonl' and '-edges.jsonl'. In all the other cases, you must provide the two node/edge sources explicitly.
+	In all these cases, a source is passed to :func:`ketl.reader_helper`, so it can be a file path, a file-like object,
+	or a string (None doesn't make sense here).
+
+	Returns the number of nodes+edges loaded.
+
+	TODO: it doesn't need separated files, since the JSONL items report their type.
+	"""
+
+	progress_logger = ProgressLogger (
+		logger = log,
+		progress_resolution = 10000,
+		log_message_template = "%d knowledge graph elements loaded"
+	)
+	# At the moment, it's not needed, since we report from the main loop only.
+	# Set it if you want to report from the parallel batch parsers
+	# progress_logger.set_is_thread_safe ( False ) 
+
+	async def main_loop ( pg_elems_source: TextIO|Iterable[str], batch_loader: Callable[ [list[dict[str, Any]]], int ] ) -> int:
+		"""
+		The generic reader, passed to :func:`ketl.reader_helper`.
+
+		This reads the source of PG nodes or edges, batches them into batches of `loader_batch_size` elements, 
+		and sends each batch to the provided `batch_loader`, which is responsible for loading the batch into the 
+		Neo4j database and returning the number of loaded elements.
+
+		Multiple batches are processed asynchronously, with a maximum concurrency of `loader_max_concurrency`, 
+		to avoid memory overflows and database pressure.
+
+		When the input is exhausted, waits for all the batch loaders to complete and returns the total number 
+		of loaded elements.
+		"""
+		executor = concurrent.futures.ThreadPoolExecutor ( max_workers = loader_max_concurrency )
+		n_loaded = 0
+
+		while True:
+			batch = list ( islice ( pg_elems_source, loader_batch_size ) )
+			if not batch: break
+
+			loop = asyncio.get_running_loop()
+			pg_elems: list[dict[str, Any]] = await loop.run_in_executor ( executor, lambda: json.loads ( "[" + ",".join ( js_line for js_line in batch ) + "]" ) )
+
+			n_loaded += await batch_loader ( pg_elems )
+			progress_logger.update ( n_loaded ) 
+
+		return n_loaded
+
+
+	async def nodes_load ( batch: list[dict[str, Any]] ) -> int:
+		"""
+		The batch loader for nodes.
+
+		Receives a batch of PG nodes (as dictionaries), and creates them using Cypher.
+		Also, manages retries in case of transaction collisions (TODO).
+
+		Returns the number of loaded nodes.
+		"""
+		query = """
+		UNWIND $nodes AS node_js
+		WITH node_js.id AS nid, node_js.labels AS nlabels, node_js.properties AS nprops
+		UNWIND nlabels AS nlabel
+		CREATE (n) 
+		SET n.id = nid
+		SET n += nprops
+		SET n :$(nlabel)
+		"""
+		async with neo_driver.session() as session:
+			await session.execute_write ( lambda tx: tx.run ( query, nodes = batch ) )
+		return len ( batch )
+		
+
+	async def edges_load ( batch: list[dict[str, Any]] ) -> int:
+		"""
+		The batch loader for edges.
+
+		Similarly to the node loader, receives a batch of PG edges (as dictionaries), 
+		and creates them via Cypher, managing retries as needed.
+
+		Returns the number of loaded edges.
+		"""
+		pass
+
+	# First, let's normalise the input source(s)
+	nodes_source, edges_source = None, None
+	if not isinstance ( pg_jsonl_source, tuple ):
+		if not isinstance ( pg_jsonl_source, Path ):
+			pg_jsonl_source = Path ( pg_jsonl_source )
+		nodes_source = pg_jsonl_source.with_name ( pg_jsonl_source.stem + "-nodes.jsonl" )
+		edges_source = pg_jsonl_source.with_name ( pg_jsonl_source.stem + "-edges.jsonl" )
+	elif len ( pg_jsonl_source ) == 2:
+		nodes_source, edges_source = pg_jsonl_source
+	else:
+		raise ValueError ( f"pg_jsonl_neo_loader(), invalid pg_jsonl_source: {pg_jsonl_source}" )
+
+	if not ( nodes_source or edges_source ):	
+		raise ValueError ( f"pg_jsonl_neo_loader(), both nodes_source and edges_source are empty" )
+
+	n_nodes = n_edges = 0
+
+	if not nodes_source:
+		log.warning ( f"pg_jsonl_neo_loader(), no nodes source provided, only edges will be loaded" )
+	else:
+		log.info ( f"|== Loading Nodes" )
+		progress_logger.log_message_template = "%d knowledge graph nodes loaded"
+		n_nodes = reader_helper ( 
+			lambda src: asyncio.run ( main_loop ( src, nodes_load ) ),
+			nodes_source
+		)
+
+	if not edges_source:
+		log.warning ( f"pg_jsonl_neo_loader(), no edges source provided, only nodes will be loaded" )
+	else:
+		log.info ( f"|== {n_nodes} nodes loaded. Loading Edges" )
+		progress_logger.log_message_template = "%d knowledge graph edges loaded"
+		n_edges = reader_helper (
+			lambda src: asyncio.run ( main_loop ( src, edges_load ) ), 
+			edges_source
+		)		
+		log.info ( f"|== {n_edges} edges loaded." )
+
+	log.info ( f"A total of {n_nodes + n_edges} elements loaded, all done." )
+	
+	return n_nodes + n_edges

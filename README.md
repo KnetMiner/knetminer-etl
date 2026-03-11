@@ -18,4 +18,5 @@ TODO: write much more! :-)
 * Python
 * Poetry
 * Apache Spark (and Java)
+* Docker (for Neo4j-related tests that are based on testcontainers)
 * Other dependencies are [auto-installed by Poetry](pyproject.toml)
