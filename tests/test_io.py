@@ -315,7 +315,7 @@ class TestPgDf2PgJSONL ():
 
 
 @pytest.fixture ( scope="module" )
-def neo4j_container():
+def neo4j_container() -> Generator[ Neo4jContainer, None, None ]:
 	"""
 	The test container common to all driver fixtures and all the tests.
 	"""
@@ -323,35 +323,36 @@ def neo4j_container():
 		yield container
 
 
-@pytest.fixture ( scope = "module" )
-def async_neo_driver ( neo4j_container ) -> Generator[ neo4j.AsyncDriver, None, None ]:
+def create_async_neo_driver ( neo4j_container: Neo4jContainer ) -> neo4j.AsyncDriver:
 	"""
-	Yields a driver connected to the test container.	
+	Returns a new async Neo4j driver connected to the test container.
+	**WARNING**: yes, there is a reason why this is an helper to be invoked in all the tests
+	needing it, **and not a fixture**: the async driver needs to be created inside the event loop of the test, 
+	and not in the fixture's setup. Otherwise, we get hard-to-fix conflicts between the event loop created
+	by the test (fixture) and the one that the test might create, directly or indirectly, via the code under test. 
+	
+	For instance, this was happening with :func:`pg_jsonl_neo_loader()`, which does async I/O with the driver, 
+	and tests were failing with something like "got Future <Future pending> attached to a different loop".
 	"""
 	url = neo4j_container.get_connection_url()
 	driver = neo4j.AsyncGraphDatabase.driver ( 
 		url,
 		auth = ( neo4j_container.username, neo4j_container.password )
 	)
-	try:
-		yield driver	
-	finally:
-		try: 
-			asyncio.get_event_loop().run_until_complete ( driver.close() )
-		except RuntimeError:
-			log.warning ( "Event loop already closed skipping test driver closure, hope it's fine" )
-
+	return driver
 
 @pytest.fixture ( scope = "module" )
-def neo_driver ( neo4j_container ) -> Generator[ neo4j.Driver, None, None ]:
+def neo_driver ( neo4j_container: Neo4jContainer ) -> Generator[ neo4j.Driver, None, None ]:
 	"""
-	Yields a driver connected to the test container.	
+	Yields a driver connected to the test container.
+
+	This doesn't have async issues and hence we can manage it through a fixture.
 	"""
 	yield neo4j_container.get_driver ()
 
 
 @pytest.mark.integration
-def test_pg_jsonl_neo_loader_nodes ( async_neo_driver: neo4j.AsyncDriver, neo_driver: neo4j.Driver ):
+def test_pg_jsonl_neo_loader_nodes ( neo4j_container: Neo4jContainer, neo_driver: neo4j.Driver ):
 	"""
 	Tests for :py:func:`ketl.pg_jsonl_neo_loader()`.
 
@@ -367,6 +368,8 @@ def test_pg_jsonl_neo_loader_nodes ( async_neo_driver: neo4j.AsyncDriver, neo_dr
 	- get rid of neo warnings
 	- neo retries
 	"""
+
+	async_neo_driver: neo4j.AsyncDriver = create_async_neo_driver ( neo4j_container )
 
 	# Coming from the output of pg_df_2_pg_jsonl() 
 	pg_nodes = [
@@ -402,7 +405,9 @@ def test_pg_jsonl_neo_loader_nodes ( async_neo_driver: neo4j.AsyncDriver, neo_dr
 				assert_that ( set ( db_node.get ( prop_key ) ), f"Node {node['id']} has correct values for property '{prop_key}' in the database" )\
 					.is_equal_to ( set ( prop_values ) )
 
-def test_pg_jsonl_large_stream ( async_neo_driver: neo4j.AsyncDriver, neo_driver: neo4j.Driver ):
+def test_pg_jsonl_neo_loader_large_input ( neo4j_container: Neo4jContainer, neo_driver: neo4j.Driver ):
+	async_neo_driver: neo4j.AsyncDriver = create_async_neo_driver ( neo4j_container )
+
 	input_size = 50000
 	# The input is a stream and not a file, the internal reader is flexible with various input sources
 	nodes_stream = ( 
