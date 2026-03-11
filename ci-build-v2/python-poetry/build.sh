@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-set -e
-
+set -eE -o pipefail
 
 function stage_release_local
 {
