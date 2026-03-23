@@ -266,7 +266,7 @@ def pg_jsonl_neo_loader (
 		return n_loaded
 
 
-	async def nodes_load ( batch: list[dict[str, Any]] ) -> int:
+	async def nodes_load ( nodes_batch: list[dict[str, Any]] ) -> int:
 		"""
 		The batch loader for nodes.
 
@@ -285,11 +285,11 @@ def pg_jsonl_neo_loader (
 		SET n :$(nlabel)
 		"""
 		async with neo_driver.session() as session:
-			await session.execute_write ( lambda tx: tx.run ( query, nodes = batch ) )
-		return len ( batch )
+			await session.execute_write ( lambda tx: tx.run ( query, nodes = nodes_batch ) )
+		return len ( nodes_batch )
 		
 
-	async def edges_load ( batch: list[dict[str, Any]] ) -> int:
+	async def edges_load ( edges_batch: list[dict[str, Any]] ) -> int:
 		"""
 		The batch loader for edges.
 
@@ -298,7 +298,20 @@ def pg_jsonl_neo_loader (
 
 		Returns the number of loaded edges.
 		"""
-		pass
+		query = """
+		UNWIND $edges AS edge_js
+		WITH edge_js.id AS eid, edge_js.labels[0] AS etype, 
+		  edge_js.properties AS eprops, edge_js.from AS from_id, edge_js.to AS to_id
+		MATCH (from { id: from_id } ), (to { id: to_id } )
+		CREATE (from)-[e]->(to)
+		SET e.id = eid
+		SET e += eprops
+		SET e :$(etype)
+		"""
+		async with neo_driver.session() as session:
+			await session.execute_write ( lambda tx: tx.run ( query, edges = edges_batch ) )
+		return len ( edges_batch )
+	
 
 	# First, let's normalise the input source(s)
 	nodes_source, edges_source = None, None

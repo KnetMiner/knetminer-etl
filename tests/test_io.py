@@ -351,8 +351,25 @@ def neo_driver ( neo4j_container: Neo4jContainer ) -> Generator[ neo4j.Driver, N
 	yield neo4j_container.get_driver ()
 
 
+@pytest.fixture ( scope = "module" )
+def pg_nodes () -> list[ dict ]:
+	"""
+	A fixture providing nodes to test the Neo4j loader. This is used in multiple tests (eg, node loading, 
+	edge loading).
+	"""
+	# Coming from the output of pg_df_2_pg_jsonl() 
+	pg_nodes = [
+		{"type": "node", "id": "ENSMBL0005", "labels": ["Gene"], "properties": {"hasAccession": ["ENSMBL0005"], "source": ["NeoLoaderTest"], "hasChromosomeId": ["10E"], "hasChromosomeEnd": [87971930], "hasGeneName": ["PTEN"], "hasChromosomeBegin": [87863119]}},
+		{"type": "node", "id": "ENSMBL0007", "labels": ["Gene"], "properties": {"hasAccession": ["ENSMBL0007"], "source": ["NeoLoaderTest"], "hasChromosomeId": ["12G"], "hasChromosomeEnd": [25250930], "hasGeneName": ["KRAS"], "hasChromosomeBegin": [25205246]}},
+		{"type": "node", "id": "QA06", "labels": ["Protein"], "properties": {"hasAccession": ["QA06"], "hasProteinName": ["PTEN", "APC"], "source": ["NeoLoaderTest"]}},
+		{"type": "node", "id": "QA07", "labels": ["Protein"], "properties": {"hasAccession": ["QA07"], "hasProteinName": ["KRAS"], "source": ["NeoLoaderTest"]}}
+	]
+	return pg_nodes
+
 @pytest.mark.integration
-def test_pg_jsonl_neo_loader_nodes ( neo4j_container: Neo4jContainer, neo_driver: neo4j.Driver ):
+def test_pg_jsonl_neo_loader_nodes ( 
+	pg_nodes: list[ dict ], neo4j_container: Neo4jContainer, neo_driver: neo4j.Driver 
+):
 	"""
 	Tests for :py:func:`ketl.pg_jsonl_neo_loader()`.
 
@@ -369,15 +386,9 @@ def test_pg_jsonl_neo_loader_nodes ( neo4j_container: Neo4jContainer, neo_driver
 	- neo retries
 	"""
 
-	async_neo_driver: neo4j.AsyncDriver = create_async_neo_driver ( neo4j_container )
-
-	# Coming from the output of pg_df_2_pg_jsonl() 
-	pg_nodes = [
-		{"type": "node", "id": "ENSMBL0005", "labels": ["Gene"], "properties": {"hasAccession": ["ENSMBL0005"], "source": ["SnakeTest"], "hasChromosomeId": ["10E"], "hasChromosomeEnd": [87971930], "hasGeneName": ["PTEN"], "hasChromosomeBegin": [87863119]}},
-		{"type": "node", "id": "ENSMBL0007", "labels": ["Gene"], "properties": {"hasAccession": ["ENSMBL0007"], "source": ["SnakeTest"], "hasChromosomeId": ["12G"], "hasChromosomeEnd": [25250930], "hasGeneName": ["KRAS"], "hasChromosomeBegin": [25205246]}},
-		{"type": "node", "id": "QA06", "labels": ["Protein"], "properties": {"hasAccession": ["QA06"], "hasProteinName": ["PTEN", "APC"], "source": ["SnakeTest"]}}
-	]
 	pg_nodes_str = "\n".join ( json.dumps ( node ) for node in pg_nodes )
+
+	async_neo_driver: neo4j.AsyncDriver = create_async_neo_driver ( neo4j_container )
 
 	n_nodes = pg_jsonl_neo_loader (
 		pg_jsonl_source = (pg_nodes_str, None),
@@ -405,7 +416,7 @@ def test_pg_jsonl_neo_loader_nodes ( neo4j_container: Neo4jContainer, neo_driver
 				assert_that ( set ( db_node.get ( prop_key ) ), f"Node {node['id']} has correct values for property '{prop_key}' in the database" )\
 					.is_equal_to ( set ( prop_values ) )
 
-def test_pg_jsonl_neo_loader_large_input ( neo4j_container: Neo4jContainer, neo_driver: neo4j.Driver ):
+def test_pg_jsonl_neo_loader_large_input_nodes ( neo4j_container: Neo4jContainer, neo_driver: neo4j.Driver ):
 	async_neo_driver: neo4j.AsyncDriver = create_async_neo_driver ( neo4j_container )
 
 	input_size = 50000
@@ -437,3 +448,68 @@ def test_pg_jsonl_neo_loader_large_input ( neo4j_container: Neo4jContainer, neo_
 			result = session.run ( f"MATCH (n:TestNode {{ id: 'N{n_id}' }}) RETURN n" )
 			record = result.single()
 			assert_that ( record, f"Node N{n_id} is found in the database" ).is_not_none ()
+
+
+def test_pg_jsonl_neo_loader_edges ( 
+	pg_nodes: list[ dict ], neo4j_container: Neo4jContainer, neo_driver: neo4j.Driver
+):
+	"""
+	Tests for :py:func:`ketl.pg_jsonl_neo_loader()` with edges.
+	"""
+
+	pg_edges = [
+		{"type": "edge", "id": "encodes-protein_ENSMBL0005_QA06", "labels": ["encodes-protein"], "properties": {"source": ["NeoLoaderTest"]}, "from": "ENSMBL0005", "to": "QA06"},
+		{"type": "edge", "id": "encodes-protein_ENSMBL0007_QA07", "labels": ["encodes-protein"], "properties": {"source": ["NeoLoaderTest"], "link notes": ["Manually curated"]}, "from": "ENSMBL0007", "to": "QA07"}
+	]
+
+	pg_nodes_str = "\n".join ( json.dumps ( node ) for node in pg_nodes )
+	pg_edges_str = "\n".join ( json.dumps ( edge ) for edge in pg_edges )
+
+	async_neo_driver: neo4j.AsyncDriver = create_async_neo_driver ( neo4j_container )
+
+	# Load both the nodes and the edges. Not only is this necessary, but it also verifies that 
+	# the loader can do both in one invocation.
+	n_edges = pg_jsonl_neo_loader (
+		pg_jsonl_source = (pg_nodes_str, pg_edges_str),
+		neo_driver = async_neo_driver
+	)
+
+	assert_that ( n_edges, "Return value from the loader is correct" ).is_equal_to ( len ( pg_edges ) )
+	
+	# Verify via Cypher
+	for edge in pg_edges:
+		cy_labels = ":".join ( [ f"`{label}`" for label in edge[ "labels" ] ] )
+		edge_query = f"""
+		MATCH (from)-[r:{cy_labels} {{ id: '{edge[ "id" ]}' }}]->(to)
+		WHERE from.id = '{edge[ "from" ]}' AND to.id = '{edge[ "to" ]}'
+		RETURN r
+		"""
+		with neo_driver.session() as session:
+			result = session.run ( edge_query )
+			record = result.single()
+			assert_that ( record, f"Edge {edge['id']} is found in the database" ).is_not_none ()
+			db_edge = record[ "r" ]
+			assert_that ( db_edge.type, f"Edge {edge['id']} has correct type in the database" )\
+				.is_equal_to ( edge[ "labels" ][ 0 ] )
+			for prop_key, prop_values in edge[ "properties" ].items():
+				assert_that ( db_edge.get ( prop_key ), f"Edge {edge['id']} has property '{prop_key}' in the database" )\
+					.is_not_none ()
+				assert_that ( 
+					set ( db_edge.get ( prop_key ) ),
+					f"Edge {edge['id']} has correct values for property '{prop_key}' in the database" 
+				).is_equal_to ( set ( prop_values ) )
+
+	# Further verify that the created relationships link the expected nodes
+	for edge in pg_edges:
+		edge_query = f"""
+		MATCH (from)-[r {{ id: '{edge[ "id" ]}' }}]->(to)
+		WHERE from.id = '{edge[ "from" ]}' AND to.id = '{edge[ "to" ]}'
+		RETURN from, to
+		"""
+		with neo_driver.session() as session:
+			result = session.run ( edge_query )
+			record = result.single()
+			assert_that ( record[ "from" ].get ( "id" ), f"Edge {edge['id']} links the expected source node" )\
+				.is_equal_to ( edge[ "from" ] )
+			assert_that ( record[ "to" ].get ( "id" ), f"Edge {edge['id']} links the expected target node" )\
+				.is_equal_to ( edge[ "to" ] )	
