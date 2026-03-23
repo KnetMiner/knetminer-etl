@@ -472,8 +472,8 @@ def test_pg_jsonl_neo_loader_edges (
 	n_edges = pg_jsonl_neo_loader (
 		pg_jsonl_source = (pg_nodes_str, pg_edges_str),
 		neo_driver = async_neo_driver
-	)
-
+	) - len ( pg_nodes ) # The loader returns the total number of created elements.
+	
 	assert_that ( n_edges, "Return value from the loader is correct" ).is_equal_to ( len ( pg_edges ) )
 	
 	# Verify via Cypher

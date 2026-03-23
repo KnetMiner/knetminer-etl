@@ -199,11 +199,18 @@ def pg_df_2_pg_jsonl (
 	return dump_output ( writer, out_path )
 
 
-def pg_jsonl_neo_loader ( 
+class NeoLoaderDefaults:
+	def __new__(cls, *args, **kwargs):
+		raise TypeError("Can't instantiate a constant container")
+	
+	BATCH_SIZE = 2500
+	MAX_CONCURRENCY = max(1, os.cpu_count() - 1)
+
+async def async_pg_jsonl_neo_loader ( 
 	pg_jsonl_source: str|Path|Iterable[str]|tuple[ str|Path|TextIO|Iterable[str],str|Path|TextIO|Iterable[str] ],		
 	neo_driver: neo4j.AsyncDriver,
-	loader_batch_size: int = 2500,
-	loader_max_concurrency: int = max ( 1, os.cpu_count() - 1 )
+	loader_batch_size: int = NeoLoaderDefaults.BATCH_SIZE,
+	loader_max_concurrency: int = NeoLoaderDefaults.MAX_CONCURRENCY
 ) -> int:
 	"""
 	Loads a JSONL/PG file (see :func:`ketl.pg_df_2_pg_jsonl`) into a Neo4j database, through the provided driver.
@@ -212,6 +219,10 @@ def pg_jsonl_neo_loader (
 	the nodes and then the edges, which must refer loaded nodes.
 
 	The loading is done in parallel and in batches of graph elements.
+
+	This is the async version, which is needed in cases where the caller is already in an async context
+	(eg, tests). For a synchronous wrapper, see :func:`ketl.pg_jsonl_neo_loader`.
+
 	
 	## Parameters:
 
@@ -222,7 +233,15 @@ def pg_jsonl_neo_loader (
 	In all these cases, a source is passed to :func:`ketl.reader_helper`, so it can be a file path, a file-like object,
 	or a string (None doesn't make sense here).
 
-	Returns the number of nodes+edges loaded.
+	- loader_batch_size: Neo4j loads one batch of nodes or edges per transaction, and this is the batch size.
+	  
+	- loader_max_concurrency: the maximum number of concurrent batch loaders. The loader has this number of 
+	parallel JSON parsers and this number of concurrent batch loading transactions (see the internal `main_loop` 
+	function for details). It uses the common default of all the available CPU cores minus one (left to the main 
+	thread). You should be fine with this, except, maybe, in cases like tests or debugging.	
+
+	## Returns:
+	The number of nodes+edges loaded.
 
 	TODO: it doesn't need separated files, since the JSONL items report their type.
 	"""
@@ -302,11 +321,11 @@ def pg_jsonl_neo_loader (
 		UNWIND $edges AS edge_js
 		WITH edge_js.id AS eid, edge_js.labels[0] AS etype, 
 		  edge_js.properties AS eprops, edge_js.from AS from_id, edge_js.to AS to_id
-		MATCH (from { id: from_id } ), (to { id: to_id } )
-		CREATE (from)-[e]->(to)
+		MATCH (from { id: from_id } )
+		MATCH (to { id: to_id } )
+		CREATE (from)-[e:$(etype)]->(to)
 		SET e.id = eid
 		SET e += eprops
-		SET e :$(etype)
 		"""
 		async with neo_driver.session() as session:
 			await session.execute_write ( lambda tx: tx.run ( query, edges = edges_batch ) )
@@ -335,8 +354,8 @@ def pg_jsonl_neo_loader (
 	else:
 		log.info ( f"|== Loading Nodes" )
 		progress_logger.log_message_template = "%d knowledge graph nodes loaded"
-		n_nodes = reader_helper ( 
-			lambda src: asyncio.run ( main_loop ( src, nodes_load ) ),
+		n_nodes = await reader_helper ( 
+			lambda src: main_loop ( src, nodes_load ),
 			nodes_source
 		)
 
@@ -345,8 +364,8 @@ def pg_jsonl_neo_loader (
 	else:
 		log.info ( f"|== {n_nodes} nodes loaded. Loading Edges" )
 		progress_logger.log_message_template = "%d knowledge graph edges loaded"
-		n_edges = reader_helper (
-			lambda src: asyncio.run ( main_loop ( src, edges_load ) ), 
+		n_edges = await reader_helper (
+			lambda src: main_loop ( src, edges_load ),
 			edges_source
 		)		
 		log.info ( f"|== {n_edges} edges loaded." )
@@ -354,3 +373,24 @@ def pg_jsonl_neo_loader (
 	log.info ( f"A total of {n_nodes + n_edges} elements loaded, all done." )
 	
 	return n_nodes + n_edges
+
+
+def pg_jsonl_neo_loader ( 
+	pg_jsonl_source: str|Path|Iterable[str]|tuple[ str|Path|TextIO|Iterable[str],str|Path|TextIO|Iterable[str] ],		
+	neo_driver: neo4j.AsyncDriver,
+	loader_batch_size: int = NeoLoaderDefaults.BATCH_SIZE,
+	loader_max_concurrency: int = NeoLoaderDefaults.MAX_CONCURRENCY
+) -> int:
+	"""
+	Loads a JSONL/PG file (see :func:`ketl.pg_df_2_pg_jsonl`) into a Neo4j database, through the provided driver.
+
+	This is only a synchronous wrapper for :func:`ketl.async_pg_jsonl_neo_loader`, the meat is there, 
+	including detailed documentation.
+
+	This wrapper simply uses `asyncio.run` to run the async version, so it can be used to start a new async event loop and 
+	run the async stuff in it. **DO NOT** call this function from an already running async context, since you'll likely 
+	stumble upon errors. In that case, use :func:`ketl.async_pg_jsonl_neo_loader` instead.
+	"""
+	return asyncio.run ( async_pg_jsonl_neo_loader ( pg_jsonl_source, neo_driver, loader_batch_size, loader_max_concurrency ) )
+
+
