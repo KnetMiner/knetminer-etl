@@ -205,10 +205,14 @@ class NeoLoaderDefaults:
 	
 	BATCH_SIZE = 2500
 	MAX_CONCURRENCY = max(1, os.cpu_count() - 1)
+	DO_NODES = True
+	DO_EDGES = True
 
 async def async_pg_jsonl_neo_loader ( 
-	pg_jsonl_source: str|Path|Iterable[str]|tuple[ str|Path|TextIO|Iterable[str],str|Path|TextIO|Iterable[str] ],		
+	pg_jsonl_source: str|Path|Iterable[str],		
 	neo_driver: neo4j.AsyncDriver,
+	do_nodes = NeoLoaderDefaults.DO_NODES,
+	do_edges = NeoLoaderDefaults.DO_EDGES,
 	loader_batch_size: int = NeoLoaderDefaults.BATCH_SIZE,
 	loader_max_concurrency: int = NeoLoaderDefaults.MAX_CONCURRENCY
 ) -> int:
@@ -223,15 +227,28 @@ async def async_pg_jsonl_neo_loader (
 	This is the async version, which is needed in cases where the caller is already in an async context
 	(eg, tests). For a synchronous wrapper, see :func:`ketl.pg_jsonl_neo_loader`.
 
+	The loader works by first loading the nodes (JSONL lines with "type" == "node"), 
+	and then it reads the source again and works on the edges ("type" == "edge"). This is necessary to 
+	ensure the edges link existing nodes.
+
+	As long as this consistency is preserved, this behaviour can be changed using the flags `do_nodes` 
+	and `do_edges`, see below for details. When both are set (default), the `pg_jsonl_source` **cannot** be an
+	iterator or None (which defaults to stdin), for the pretty obvious reason that these kinds of sources
+	can't be read twice. 
 	
 	## Parameters:
 
-	- pg_jsonl_source: the source of the JSONL/PG data.It can be a single `Path` object, or a tuple of two 
-	sources, where the first element is the source for nodes and the second for edges.
-	When a single source is given, it's interpreted as the prefix to two files, with suffixes 
-	'-nodes.jsonl' and '-edges.jsonl'. In all the other cases, you must provide the two node/edge sources explicitly.
-	In all these cases, a source is passed to :func:`ketl.reader_helper`, so it can be a file path, a file-like object,
-	or a string (None doesn't make sense here).
+	- pg_jsonl_source: the source of the JSONL/PG data. 
+	This is passed to :func:`ketl.reader_helper`, so it can be a file path, a file-like object,
+	a string of PG-JSON data, None (to get data from the stdin). **WARNING**: as said above, when 
+	both `do_nodes` and `do_edges` are set, the `pg_jsonl_source` can't be neither an iterator 
+	nor None/stdin.
+
+	- neo_driver: the Neo4j async driver to use for loading the data.
+
+	- do_nodes, do_edges: whether to load nodes and edges, respectively. You can choose to load node definitions
+	or edge definitions only, which can be useful for testing or to have more incremental updates in a SnakeMake
+	pipeline. **WARNING**: you **can't** load edges that refer to nodes not loaded in the database, see above.
 
 	- loader_batch_size: Neo4j loads one batch of nodes or edges per transaction, and this is the batch size.
 	  
@@ -241,6 +258,7 @@ async def async_pg_jsonl_neo_loader (
 	thread). You should be fine with this, except, maybe, in cases like tests or debugging.	
 
 	## Returns:
+
 	The number of nodes+edges loaded.
 
 	TODO: it doesn't need separated files, since the JSONL items report their type.
@@ -378,6 +396,8 @@ async def async_pg_jsonl_neo_loader (
 def pg_jsonl_neo_loader ( 
 	pg_jsonl_source: str|Path|Iterable[str]|tuple[ str|Path|TextIO|Iterable[str],str|Path|TextIO|Iterable[str] ],		
 	neo_driver: neo4j.AsyncDriver,
+	do_nodes = NeoLoaderDefaults.DO_NODES,
+	do_edges = NeoLoaderDefaults.DO_EDGES,
 	loader_batch_size: int = NeoLoaderDefaults.BATCH_SIZE,
 	loader_max_concurrency: int = NeoLoaderDefaults.MAX_CONCURRENCY
 ) -> int:
