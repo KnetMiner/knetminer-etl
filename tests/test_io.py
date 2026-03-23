@@ -391,8 +391,9 @@ def test_pg_jsonl_neo_loader_nodes (
 	async_neo_driver: neo4j.AsyncDriver = create_async_neo_driver ( neo4j_container )
 
 	n_nodes = pg_jsonl_neo_loader (
-		pg_jsonl_source = (pg_nodes_str, None),
-		neo_driver = async_neo_driver
+		pg_jsonl_source = pg_nodes_str,
+		neo_driver = async_neo_driver,
+		do_nodes = True, do_edges = False
 	)
 
 	assert_that ( n_nodes, "Return value from the loader is correct" ).is_equal_to ( len ( pg_nodes ) )
@@ -416,6 +417,7 @@ def test_pg_jsonl_neo_loader_nodes (
 				assert_that ( set ( db_node.get ( prop_key ) ), f"Node {node['id']} has correct values for property '{prop_key}' in the database" )\
 					.is_equal_to ( set ( prop_values ) )
 
+
 def test_pg_jsonl_neo_loader_large_input_nodes ( neo4j_container: Neo4jContainer, neo_driver: neo4j.Driver ):
 	async_neo_driver: neo4j.AsyncDriver = create_async_neo_driver ( neo4j_container )
 
@@ -426,8 +428,9 @@ def test_pg_jsonl_neo_loader_large_input_nodes ( neo4j_container: Neo4jContainer
 		for i in range ( input_size )
 	)
 	n_nodes = pg_jsonl_neo_loader (
-		pg_jsonl_source = (nodes_stream, None),
-		neo_driver = async_neo_driver
+		pg_jsonl_source = nodes_stream,
+		neo_driver = async_neo_driver,
+		do_nodes = True, do_edges = False
 	)
 
 	assert_that ( n_nodes, "Return value from the loader is correct" ).is_equal_to ( input_size )
@@ -464,14 +467,16 @@ def test_pg_jsonl_neo_loader_edges (
 
 	pg_nodes_str = "\n".join ( json.dumps ( node ) for node in pg_nodes )
 	pg_edges_str = "\n".join ( json.dumps ( edge ) for edge in pg_edges )
+	pg_all_str = pg_nodes_str + "\n" + pg_edges_str
 
 	async_neo_driver: neo4j.AsyncDriver = create_async_neo_driver ( neo4j_container )
 
 	# Load both the nodes and the edges. Not only is this necessary, but it also verifies that 
 	# the loader can do both in one invocation.
 	n_edges = pg_jsonl_neo_loader (
-		pg_jsonl_source = (pg_nodes_str, pg_edges_str),
-		neo_driver = async_neo_driver
+		pg_jsonl_source = pg_all_str,
+		neo_driver = async_neo_driver,
+		do_nodes = True, do_edges = True
 	) - len ( pg_nodes ) # The loader returns the total number of created elements.
 	
 	assert_that ( n_edges, "Return value from the loader is correct" ).is_equal_to ( len ( pg_edges ) )

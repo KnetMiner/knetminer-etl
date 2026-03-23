@@ -3,6 +3,7 @@ from itertools import islice
 import json
 import logging
 from pathlib import Path
+import re
 from typing import Any, Callable, Iterable, TextIO
 
 from brandizpyes.io import dump_output
@@ -209,7 +210,7 @@ class NeoLoaderDefaults:
 	DO_EDGES = True
 
 async def async_pg_jsonl_neo_loader ( 
-	pg_jsonl_source: str|Path|Iterable[str],		
+	pg_jsonl_source: str|Path|TextIO|Iterable[Any]|None,		
 	neo_driver: neo4j.AsyncDriver,
 	do_nodes = NeoLoaderDefaults.DO_NODES,
 	do_edges = NeoLoaderDefaults.DO_EDGES,
@@ -234,8 +235,10 @@ async def async_pg_jsonl_neo_loader (
 	As long as this consistency is preserved, this behaviour can be changed using the flags `do_nodes` 
 	and `do_edges`, see below for details. When both are set (default), the `pg_jsonl_source` **cannot** be an
 	iterator or None (which defaults to stdin), for the pretty obvious reason that these kinds of sources
-	can't be read twice. 
+	can't be read twice. You can pass a file-like object in this mode, but it must be a random access one,
+	ie, its `seek()` method must work correctly.
 	
+
 	## Parameters:
 
 	- pg_jsonl_source: the source of the JSONL/PG data. 
@@ -273,7 +276,7 @@ async def async_pg_jsonl_neo_loader (
 	# Set it if you want to report from the parallel batch parsers
 	# progress_logger.set_is_thread_safe ( False ) 
 
-	async def main_loop ( pg_elems_source: TextIO|Iterable[str], batch_loader: Callable[ [list[dict[str, Any]]], int ] ) -> int:
+	async def main_loop ( pg_elems_source: TextIO|Iterable[str], is_nodes_mode: bool, batch_loader: Callable[ [list[dict[str, Any]]], int ] ) -> int:
 		"""
 		The generic reader, passed to :func:`ketl.reader_helper`.
 
@@ -290,13 +293,32 @@ async def async_pg_jsonl_neo_loader (
 		executor = concurrent.futures.ThreadPoolExecutor ( max_workers = loader_max_concurrency )
 		n_loaded = 0
 
+		type_filter = "node" if is_nodes_mode else "edge"
+		type_re = f"""("type"|'type'):\\s*("{type_filter}"|'{type_filter}')"""
+		type_re = re.compile ( type_re )
+
+		# Switch to a filtered iterable:
+		
+		# TODO: remove me
+		def line_debugger ( line: str ) -> str:
+			log.debug ( f"line is {line}" )
+			return line and re.search ( type_re, line )
+		
+		pg_elems_source = ( line for line in pg_elems_source if line and re.search ( type_re, line ) )
+		
+		# TODO: remove me 
+		# pg_elems_source = ( line for line in pg_elems_source if line_debugger ( line ) )
+
 		while True:
 			batch = list ( islice ( pg_elems_source, loader_batch_size ) )
 			if not batch: break
 
 			loop = asyncio.get_running_loop()
+			# Parse the JSON lines in parallel
 			pg_elems: list[dict[str, Any]] = await loop.run_in_executor ( executor, lambda: json.loads ( "[" + ",".join ( js_line for js_line in batch ) + "]" ) )
 
+			# Do the loading asynchronously. So, we have parallel parsers added to the main thread running the source
+			# scanning plus the loaders in the event loop.
 			n_loaded += await batch_loader ( pg_elems )
 			progress_logger.update ( n_loaded ) 
 
@@ -349,42 +371,44 @@ async def async_pg_jsonl_neo_loader (
 			await session.execute_write ( lambda tx: tx.run ( query, edges = edges_batch ) )
 		return len ( edges_batch )
 	
-
-	# First, let's normalise the input source(s)
-	nodes_source, edges_source = None, None
-	if not isinstance ( pg_jsonl_source, tuple ):
-		if not isinstance ( pg_jsonl_source, Path ):
-			pg_jsonl_source = Path ( pg_jsonl_source )
-		nodes_source = pg_jsonl_source.with_name ( pg_jsonl_source.stem + "-nodes.jsonl" )
-		edges_source = pg_jsonl_source.with_name ( pg_jsonl_source.stem + "-edges.jsonl" )
-	elif len ( pg_jsonl_source ) == 2:
-		nodes_source, edges_source = pg_jsonl_source
-	else:
-		raise ValueError ( f"pg_jsonl_neo_loader(), invalid pg_jsonl_source: {pg_jsonl_source}" )
-
-	if not ( nodes_source or edges_source ):	
-		raise ValueError ( f"pg_jsonl_neo_loader(), both nodes_source and edges_source are empty" )
+	# Some consistency check
+	source_has_seek = hasattr ( pg_jsonl_source, "seek" ) and callable ( pg_jsonl_source.seek )
+	if do_edges and do_nodes:
+		if not ( isinstance ( pg_jsonl_source, (str, Path) ) or source_has_seek ):
+			raise ValueError ( 
+				f"pg_jsonl_neo_loader(), attempt to load both nodes and edges with a non-rewindable source." 
+				+ " Pass me a string, a path or a rewindable file-like object." 
+			)
 
 	n_nodes = n_edges = 0
 
-	if not nodes_source:
-		log.warning ( f"pg_jsonl_neo_loader(), no nodes source provided, only edges will be loaded" )
+	if not do_nodes:
+		log.info ( f"pg_jsonl_neo_loader(), do_nodes not set, skipping node loading" )
 	else:
 		log.info ( f"|== Loading Nodes" )
 		progress_logger.log_message_template = "%d knowledge graph nodes loaded"
 		n_nodes = await reader_helper ( 
-			lambda src: main_loop ( src, nodes_load ),
-			nodes_source
+			lambda src: main_loop ( src, is_nodes_mode = True, batch_loader = nodes_load ),
+			pg_jsonl_source
 		)
 
-	if not edges_source:
-		log.warning ( f"pg_jsonl_neo_loader(), no edges source provided, only nodes will be loaded" )
+	if not do_edges:
+		log.info ( f"pg_jsonl_neo_loader(), do_edges not set, skipping edge loading" )
 	else:
-		log.info ( f"|== {n_nodes} nodes loaded. Loading Edges" )
+		msg = f"{n_nodes} nodes loaded. Loading Edges" if do_nodes else "Loading Edges"
+		log.info ( f"|== {msg}" )
+		
+		# Rewind as needed
+		if do_nodes and source_has_seek:
+			try:
+				pg_jsonl_source.seek ( 0 )
+			except IOError as ex:
+				raise IOError ( f"pg_jsonl_neo_loader(), failed to rewind the source for edge loading: {ex}", cause = ex )
+
 		progress_logger.log_message_template = "%d knowledge graph edges loaded"
 		n_edges = await reader_helper (
-			lambda src: main_loop ( src, edges_load ),
-			edges_source
+			lambda src: main_loop ( src, is_nodes_mode = False, batch_loader = edges_load ),
+			pg_jsonl_source
 		)		
 		log.info ( f"|== {n_edges} edges loaded." )
 
@@ -394,7 +418,7 @@ async def async_pg_jsonl_neo_loader (
 
 
 def pg_jsonl_neo_loader ( 
-	pg_jsonl_source: str|Path|Iterable[str]|tuple[ str|Path|TextIO|Iterable[str],str|Path|TextIO|Iterable[str] ],		
+	pg_jsonl_source: str|Path|TextIO|Iterable[Any]|None,		
 	neo_driver: neo4j.AsyncDriver,
 	do_nodes = NeoLoaderDefaults.DO_NODES,
 	do_edges = NeoLoaderDefaults.DO_EDGES,
@@ -411,6 +435,6 @@ def pg_jsonl_neo_loader (
 	run the async stuff in it. **DO NOT** call this function from an already running async context, since you'll likely 
 	stumble upon errors. In that case, use :func:`ketl.async_pg_jsonl_neo_loader` instead.
 	"""
-	return asyncio.run ( async_pg_jsonl_neo_loader ( pg_jsonl_source, neo_driver, loader_batch_size, loader_max_concurrency ) )
-
-
+	return asyncio.run ( async_pg_jsonl_neo_loader ( 
+		pg_jsonl_source, neo_driver, do_nodes, do_edges, loader_batch_size, loader_max_concurrency
+	))
