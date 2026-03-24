@@ -2,9 +2,8 @@ import asyncio
 import concurrent
 import json
 from itertools import islice
+import logging
 import os
-
-from ketl.io import log
 
 import neo4j
 from brandizpyes.io import reader_helper
@@ -12,6 +11,9 @@ from brandizpyes.logging import ProgressLogger
 import re
 from pathlib import Path
 from typing import Any, Callable, Iterable, TextIO
+
+
+log = logging.getLogger ( __name__ )
 
 
 class NeoLoaderDefaults:

@@ -2,7 +2,7 @@ import logging
 
 from assertpy import assert_that
 
-from ketl import (ConstantPropertyMapper, GraphProperty, GraphTriple,
+from ketl.core import (ConstantPropertyMapper, GraphProperty, GraphTriple,
                   JSONBasedValueConverter)
 
 log = logging.getLogger ( __name__ )

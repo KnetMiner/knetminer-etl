@@ -6,7 +6,7 @@ from brandizpyes.io import dump_output
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
-from ketl import (GraphProperty, JSONBasedValueConverter, PGElementType,
+from ketl.core import (GraphProperty, JSONBasedValueConverter, PGElementType,
                   ValueConverter)
 from ketl.spark_utils import df_load, df_save
 

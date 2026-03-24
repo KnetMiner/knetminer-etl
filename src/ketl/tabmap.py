@@ -11,7 +11,7 @@ from pyspark.sql.functions import explode, udf
 from pyspark.sql.types import (ArrayType, DataType, StringType, StructField,
                                StructType)
 
-from ketl import (ConstantPropertyMapper, GraphTriple, IdentityValueConverter,
+from ketl.core import (ConstantPropertyMapper, GraphTriple, IdentityValueConverter,
                   Mapper, PreSerializers, PropertyMapperMixin, ValueConverter)
 from ketl.spark_utils import df_save
 

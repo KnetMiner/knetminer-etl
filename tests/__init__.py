@@ -1,1 +1,0 @@
-# pytest and VSC plug-ins require this.
