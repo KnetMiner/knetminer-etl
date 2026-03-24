@@ -1,216 +1,31 @@
 import asyncio
-from itertools import islice
-import json
-import logging
-from pathlib import Path
-import re
-from typing import Any, Callable, Iterable, TextIO
-
-from brandizpyes.io import dump_output
 import concurrent
-import neo4j
-from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql import functions as F
-
-from ketl import (GraphProperty, JSONBasedValueConverter, PGElementType,
-                  ValueConverter)
-from ketl.spark_utils import df_load, df_save
-
-import neo4j
+import json
+from itertools import islice
 import os
 
+from ketl.io import log
+
+import neo4j
 from brandizpyes.io import reader_helper
 from brandizpyes.logging import ProgressLogger
-
-log = logging.getLogger ( __name__ )
-
-
-def triples_2_pg_df (
-	triples_df_or_path: DataFrame | str,
-	triples_type: PGElementType,
-	spark: SparkSession | None = None,
-	out_path: str | None = None
-) -> DataFrame:
-	"""
-	Converts a DataFrame of triples (ie, with the columns 'id', 'key') into a DataFrame reflecting the PG-Format.
-
-	## Parameters:
-	:param triples_df_or_path: The input DataFrame with the triples, or the path to a (Parquet) file where to
-	load it from. When a path is given, `spark` must be provided too. 
-
-	:param triples_type (PGElementType): The type of elements represented by the triples (nodes or edges).
-
-	:param spark: when `triples_df_or_path` is a path, the Spark session used to load the Parquet file 
-	(mandatory param in that case).
-
-	:param out_path: optional path where to save the resulting DataFrame as a Parquet file, using
-	the checkpointing functions in `ketl.spark_utils`.
-
-	## Returns:
-	A data frame reflecting the structure of PG-Format, ie, with the columns:
-
-	- type (string): equals to `triples_type`
-	- id (string): from triples_df.id
-	- labels (string array): an array, populated with the merge from triples_df.key == :py:attr:`ketl.GraphProperty.TYPE_KEY` values
-	- from (string), to (string): present when triples_type is `PGElementType.EDGE`, and values taken from 
-		triples_df.key == :py:attr:`ketl.GraphProperty.FROM_KEY`|:py:attr:`ketl.GraphProperty.TO_KEY`. 
-		An error is raised if these are missing or there are multiple values for any set of triples 
-		sharing an 'id'.
-	- properties: a dictionary with all the other properties, with the map values being all lists of unique values
-		(internally collected as sets), and all values still being string representations/serializations of
-		the actual values. These are unserialised by :func:`ketl.pg_df_2_pgjsonl`.
-	"""
-
-	# Sanity checks
-	if not isinstance(triples_type, PGElementType):
-		raise ValueError ( f"triples_2_pg_df(): invalid triples_type: {triples_type}" )
-
-	# The DF that collects the node labels/types
-	triples_df = df_load ( triples_df_or_path, spark )
-
-	type_df = triples_df.filter ( F.col ( "key" ) == GraphProperty.TYPE_KEY )
-	type_labels_df = type_df.groupBy ( "id" ).agg ( F.collect_set ( "value" ).alias ( "labels" ) )
-
-	# The DFs about 'from' and 'to'
-	if triples_type == PGElementType.EDGE:
-		from_df = triples_df.filter ( F.col ( "key" ) == GraphProperty.FROM_KEY )
-		to_df = triples_df.filter ( F.col ( "key" ) == GraphProperty.TO_KEY )
-
-		from_values_df = from_df.groupBy ( "id" ).agg ( F.first ( "value" ).alias ( "from" ) )
-		to_values_df = to_df.groupBy ( "id" ).agg ( F.first ( "value" ).alias ( "to" ) )
-
-	# The property DF in 3 steps:
-	# 
-
-	# 1 Filter property rows
-	properties_rows = triples_df.filter (
-		~F.col ( "key" ).isin ( GraphProperty.TYPE_KEY, GraphProperty.FROM_KEY, GraphProperty.TO_KEY )
-	)
-
-	# 2. Agggregate them per node/edge and per property key
-	property_values = properties_rows.groupBy ( "id", "key" ).agg (
-		F.collect_set ( "value" ).alias ( "values" )
-	)
-
-	# 3. Build a map per node/edge with key/values pairs
-	properties = property_values.groupBy ( "id" ).agg (
-		F.map_from_entries (
-			F.collect_list ( F.struct ( F.col ( "key" ), F.col ( "values" ) ) )
-		).alias ( "properties" )
-	)
-
-
-	# The result DataFrame, start from IDs, then join the other elements built above
-	#
-
-	result_df = triples_df.select ( "id" ).distinct()
-
-	# Labels
-	result_df = result_df.join ( type_labels_df, on = "id", how = "left" )
-
-  # edge endpoints
-	if triples_type == PGElementType.EDGE:
-		result_df = result_df.join ( from_values_df, on = "id", how = "left" )
-		result_df = result_df.join ( to_values_df, on = "id", how = "left" )
-
-	# properties (defaults to {})
-	result_df = result_df.join ( properties, on = "id", how = "left" )
-	result_df = result_df.withColumn (
-		"properties",
-		F.when ( F.col ( "properties" ).isNull(), F.create_map() ).otherwise ( F.col( "properties" ) )
-	)
-
-	# node/edge identifier
-	result_df = result_df.withColumn ( "type", F.lit ( triples_type.value ) )
-
-	# TODO, validations (as separate function):
-	# - id
-	# - #labels > 0
-	# - from/to present if EDGE, and not null
-
-	# Save if requested
-	if out_path:
-		df_save ( result_df, out_path )
-
-	# Eventually!
-	return result_df
-
-
-def pg_df_2_pg_jsonl (
-	pg_df_or_path: DataFrame | str,
-	spark: SparkSession | None = None,
-	out_path: str | TextIO | None = None,
-	value_converters: dict[str, ValueConverter] | None = None
-) -> str | None:
-	"""
-	Writes a DataFrame in the JSONL/PG format to a file if `out_path` is provided.
-
-	## Parameters:
-	- pg_df_or_path: when a DataFrame, the input DF in PG-Format (see :func:`ketl.triples_2_pg_df`).
-		When a string, the path to a Parquet file storing the same kind of data frame, which is loaded
-		through `spark`.
-
-	- spark: when `pg_df_or_path` is a path, the Spark session used to load the Parquet file. So, it 
-		is mandatory in that case.
-
-	- out_path: has the same semantics of the corresponding parameter passed to :func:`ketl.dump_output`, that is:
-		writes to a file path, or a file-like object, or to a to-be-returned string buffer.
-
-	- value_converters (dict[str, ValueConverter], optional): A dictionary of value converters, to be used
-		to unserialise from string representations in the property values back to the real values. If a converter
-		isn't set for a property key, we use the default :class:`JSONBasedValueConverter` (see its docstring for
-		details).
-
-	## Returns:
-		The JSONL/PG content as a string if `out_path` is None, otherwise None.
-
-	"""
-
-	def writer ( fh: TextIO ):
-		"""
-		The writer for :func:`ketl.dump_output`.
-
-		Just iterates over the DataFrame rows and dumps PG-Format JSON objects.
-		"""
-
-		# pg_df_or_path is now a DF
-		for row in pg_df_or_path.toLocalIterator ():
-			# Unserialize property values
-			properties = {}
-			default_converter = JSONBasedValueConverter ()
-			for k, vlist in row.properties.items():
-				converter = value_converters.get ( k, default_converter )
-				properties [ k ] = [ converter.unserialize ( v ) for v in vlist ]
-
-			pg_elem = {
-				"type": row.type,
-				"id": row.id,
-				"labels": row.labels,
-				"properties": properties
-			}
-			if row.type == PGElementType.EDGE.value:
-				pg_elem [ "from" ] = row [ "from" ]
-				pg_elem [ "to" ] = row [ "to" ]
-
-			fh.write ( json.dumps ( pg_elem ) + "\n" )
-
-	pg_df_or_path = df_load ( pg_df_or_path, spark )
-
-	if not value_converters: value_converters = {}
-	return dump_output ( writer, out_path )
+import re
+from pathlib import Path
+from typing import Any, Callable, Iterable, TextIO
 
 
 class NeoLoaderDefaults:
 	def __new__(cls, *args, **kwargs):
 		raise TypeError("Can't instantiate a constant container")
-	
+
 	BATCH_SIZE = 2500
 	MAX_CONCURRENCY = max(1, os.cpu_count() - 1)
 	DO_NODES = True
 	DO_EDGES = True
 
-async def async_pg_jsonl_neo_loader ( 
-	pg_jsonl_source: str|Path|TextIO|Iterable[Any]|None,		
+
+async def async_pg_jsonl_neo_loader (
+	pg_jsonl_source: str|Path|TextIO|Iterable[Any]|None,
 	neo_driver: neo4j.AsyncDriver,
 	do_nodes = NeoLoaderDefaults.DO_NODES,
 	do_edges = NeoLoaderDefaults.DO_EDGES,
@@ -237,7 +52,7 @@ async def async_pg_jsonl_neo_loader (
 	iterator or None (which defaults to stdin), for the pretty obvious reason that these kinds of sources
 	can't be read twice. You can pass a file-like object in this mode, but it must be a random access one,
 	ie, its `seek()` method must work correctly.
-	
+
 
 	## Parameters:
 
@@ -254,7 +69,7 @@ async def async_pg_jsonl_neo_loader (
 	pipeline. **WARNING**: you **can't** load edges that refer to nodes not loaded in the database, see above.
 
 	- loader_batch_size: Neo4j loads one batch of nodes or edges per transaction, and this is the batch size.
-	  
+
 	- loader_max_concurrency: the maximum number of concurrent batch loaders. The loader has this number of 
 	parallel JSON parsers and this number of concurrent batch loading transactions (see the internal `main_loop` 
 	function for details). It uses the common default of all the available CPU cores minus one (left to the main 
@@ -298,14 +113,14 @@ async def async_pg_jsonl_neo_loader (
 		type_re = re.compile ( type_re )
 
 		# Switch to a filtered iterable:
-		
+
 		# TODO: remove me
 		def line_debugger ( line: str ) -> str:
 			log.debug ( f"line is {line}" )
 			return line and re.search ( type_re, line )
-		
+
 		pg_elems_source = ( line for line in pg_elems_source if line and re.search ( type_re, line ) )
-		
+
 		# TODO: remove me 
 		# pg_elems_source = ( line for line in pg_elems_source if line_debugger ( line ) )
 
@@ -320,7 +135,7 @@ async def async_pg_jsonl_neo_loader (
 			# Do the loading asynchronously. So, we have parallel parsers added to the main thread running the source
 			# scanning plus the loaders in the event loop.
 			n_loaded += await batch_loader ( pg_elems )
-			progress_logger.update ( n_loaded ) 
+			progress_logger.update ( n_loaded )
 
 		return n_loaded
 
@@ -346,7 +161,7 @@ async def async_pg_jsonl_neo_loader (
 		async with neo_driver.session() as session:
 			await session.execute_write ( lambda tx: tx.run ( query, nodes = nodes_batch ) )
 		return len ( nodes_batch )
-		
+
 
 	async def edges_load ( edges_batch: list[dict[str, Any]] ) -> int:
 		"""
@@ -370,14 +185,14 @@ async def async_pg_jsonl_neo_loader (
 		async with neo_driver.session() as session:
 			await session.execute_write ( lambda tx: tx.run ( query, edges = edges_batch ) )
 		return len ( edges_batch )
-	
+
 	# Some consistency check
 	source_has_seek = hasattr ( pg_jsonl_source, "seek" ) and callable ( pg_jsonl_source.seek )
 	if do_edges and do_nodes:
 		if not ( isinstance ( pg_jsonl_source, (str, Path) ) or source_has_seek ):
-			raise ValueError ( 
-				f"pg_jsonl_neo_loader(), attempt to load both nodes and edges with a non-rewindable source." 
-				+ " Pass me a string, a path or a rewindable file-like object." 
+			raise ValueError (
+				f"pg_jsonl_neo_loader(), attempt to load both nodes and edges with a non-rewindable source."
+				+ " Pass me a string, a path or a rewindable file-like object."
 			)
 
 	n_nodes = n_edges = 0
@@ -387,7 +202,7 @@ async def async_pg_jsonl_neo_loader (
 	else:
 		log.info ( f"|== Loading Nodes" )
 		progress_logger.log_message_template = "%d knowledge graph nodes loaded"
-		n_nodes = await reader_helper ( 
+		n_nodes = await reader_helper (
 			lambda src: main_loop ( src, is_nodes_mode = True, batch_loader = nodes_load ),
 			pg_jsonl_source
 		)
@@ -397,7 +212,7 @@ async def async_pg_jsonl_neo_loader (
 	else:
 		msg = f"{n_nodes} nodes loaded. Loading Edges" if do_nodes else "Loading Edges"
 		log.info ( f"|== {msg}" )
-		
+
 		# Rewind as needed
 		if do_nodes and source_has_seek:
 			try:
@@ -409,16 +224,16 @@ async def async_pg_jsonl_neo_loader (
 		n_edges = await reader_helper (
 			lambda src: main_loop ( src, is_nodes_mode = False, batch_loader = edges_load ),
 			pg_jsonl_source
-		)		
+		)
 		log.info ( f"|== {n_edges} edges loaded." )
 
 	log.info ( f"A total of {n_nodes + n_edges} elements loaded, all done." )
-	
+
 	return n_nodes + n_edges
 
 
-def pg_jsonl_neo_loader ( 
-	pg_jsonl_source: str|Path|TextIO|Iterable[Any]|None,		
+def pg_jsonl_neo_loader (
+	pg_jsonl_source: str|Path|TextIO|Iterable[Any]|None,
 	neo_driver: neo4j.AsyncDriver,
 	do_nodes = NeoLoaderDefaults.DO_NODES,
 	do_edges = NeoLoaderDefaults.DO_EDGES,
@@ -435,6 +250,6 @@ def pg_jsonl_neo_loader (
 	run the async stuff in it. **DO NOT** call this function from an already running async context, since you'll likely 
 	stumble upon errors. In that case, use :func:`ketl.async_pg_jsonl_neo_loader` instead.
 	"""
-	return asyncio.run ( async_pg_jsonl_neo_loader ( 
+	return asyncio.run ( async_pg_jsonl_neo_loader (
 		pg_jsonl_source, neo_driver, do_nodes, do_edges, loader_batch_size, loader_max_concurrency
 	))
