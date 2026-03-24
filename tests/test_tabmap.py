@@ -7,7 +7,7 @@ from pyspark.sql import DataFrame
 from pyspark.sql.types import IntegerType, StringType
 
 from ketl.core import ConstantPropertyMapper, GraphTriple, IdentityValueConverter
-from ketl.spark_utils import assertDataFrameEqualX
+from ketl.spark.utils import assertDataFrameEqualX
 from ketl.tabmap import (ColumnMapper, ColumnValueMapper, IdColumnMapper,
                          RowTripleMapperMixin, RowValueMapper,
                          SparkDataFrameMapper, TabFileMapper)

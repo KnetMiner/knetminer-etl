@@ -13,7 +13,7 @@ from pyspark.sql.types import (ArrayType, DataType, StringType, StructField,
 
 from ketl.core import (ConstantPropertyMapper, GraphTriple, IdentityValueConverter,
                   Mapper, PreSerializers, PropertyMapperMixin, ValueConverter)
-from ketl.spark_utils import df_save
+from ketl.spark.utils import df_save
 
 log = logging.getLogger ( __name__ )
 
@@ -568,7 +568,7 @@ class TabFileMapper:
 		- file_path: the path to the input tabular file (CSV/TSV).
 
 		- out_path: if given, the mapped data frame is saved (as parquet) using the checkpointing	functions 
-		  in `ketl.spark_utils`, as an intermediate that allows for building incremental workflows in Snakemake or
+		  in `ketl.spark.utils`, as an intermediate that allows for building incremental workflows in Snakemake or
 			similar frameworks. 
 
 

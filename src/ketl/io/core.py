@@ -8,7 +8,7 @@ from pyspark.sql import functions as F
 
 from ketl.core import (GraphProperty, JSONBasedValueConverter, PGElementType,
                   ValueConverter)
-from ketl.spark_utils import df_load, df_save
+from ketl.spark.utils import df_load, df_save
 
 
 
@@ -34,7 +34,7 @@ def triples_2_pg_df (
 	(mandatory param in that case).
 
 	:param out_path: optional path where to save the resulting DataFrame as a Parquet file, using
-	the checkpointing functions in `ketl.spark_utils`.
+	the checkpointing functions in `ketl.spark.utils`.
 
 	## Returns:
 	A data frame reflecting the structure of PG-Format, ie, with the columns:
