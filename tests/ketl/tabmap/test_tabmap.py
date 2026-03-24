@@ -449,7 +449,8 @@ class TestTabFileMapper:
 			spark_options = { "inferSchema": is_infer_schema }
 		)
 
-		test_file_path = os.path.dirname ( os.path.abspath ( __file__ ) ) + "/resources/test-genes.tsv"		
+		test_file_path = os.path.dirname ( os.path.abspath ( __file__ + "/../.." ) ) \
+			+ "/resources/test-genes.tsv"		
 		triples_df = tb_mapper.map ( spark_session, test_file_path )
 
 

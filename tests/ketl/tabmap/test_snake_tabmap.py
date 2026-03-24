@@ -53,18 +53,22 @@ def run_base_tabmap_test_file () -> None:
 	run_snakefile ( "tabmap-test.snakefile" )
 
 
-def run_snakefile ( snakefile_path: str, target: str = "all" ) -> None:
+def run_snakefile ( snakefile_path: str, snake_target: str = "all" ) -> None:
 	"""
 	Helper to run our SnakeMake test files
+
+	`snakefile_path` is the path to the Snakefile to run. If it's not absolute, it's rooted into
+	<project_root>/tests/resources. 
 	"""
 
 	my_dir = os.path.dirname ( os.path.abspath ( __file__ ) )
+	prj_dir = os.path.abspath ( my_dir + "/.." * 3 )
+	test_dir = prj_dir + "/tests"
 	
 	if not snakefile_path.startswith ( "/" ):
-		test_dir = my_dir + "/resources"
-		snakefile_path = test_dir + "/" + snakefile_path
+		snakefile_path = f"{test_dir}/resources/{snakefile_path}"
 
-	os.chdir ( my_dir + "/.." )
+	os.chdir ( prj_dir )
 
 	
 	# Clean the output dir, if it exists
@@ -72,7 +76,7 @@ def run_snakefile ( snakefile_path: str, target: str = "all" ) -> None:
 		subprocess.run ( [ "rm", "-rf", KETL_DATA_DIR_PATH ], check = True )
 
 	subprocess.run ( 
-		[ "snakemake", "-s", snakefile_path, "--cores", "all", target ], 
+		[ "snakemake", "-s", snakefile_path, "--cores", "all", snake_target ], 
 		check = True,
 		env = { **os.environ, "KETL_DATA": KETL_DATA_DIR_PATH, "PYTHONPATH": "tests" }
 	)
