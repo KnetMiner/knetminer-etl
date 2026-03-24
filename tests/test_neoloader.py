@@ -206,6 +206,7 @@ def neo_driver ( neo4j_container: Neo4jContainer ) -> Generator[ neo4j.Driver, N
 	"""
 	Yields a driver connected to the test container.
 
+	Tests use this for verifying written data via synch queries.
 	This doesn't have async issues and hence we can manage it through a fixture.
 	"""
 	yield neo4j_container.get_driver ()
