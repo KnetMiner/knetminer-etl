@@ -40,9 +40,6 @@ class GraphProperty:
 
 	key: str
 	value: Any
-	
-
-
 
 
 @dataclass ( frozen = True )
@@ -85,6 +82,7 @@ PreSerializer = Callable[[Any], Any]
 PreSerializers = list [ PreSerializer ] | PreSerializer
 """Type alias for a possibly-multiple serialisers."""
 
+
 class ValueConverter ( ABC ):
 	"""
 	KnetMiner ETL value converter base class.
@@ -95,7 +93,8 @@ class ValueConverter ( ABC ):
 	
 	We provide with a the default implementation :class:`ketl.JSONBasedValueConverter` (see there).
 
-	Attributes:
+	## Attributes:
+
 		name: The converter name (usually the class name).
 
 		pre_serializers: An optional function or list of functions applied to a value before serialization.
@@ -103,7 +102,10 @@ class ValueConverter ( ABC ):
 		For instance, it can be used to set defaults, or normalize known values (eg, trimming whitespaces).
 		If it's a list, it's elements are chained in the list order (see :meth:`add_pre_serializers()`).
 		If it's `None`, a default is set that returns None for null or falsy ('', [], etc) values.
+
+	TODO: this could be a Python protocol.
 	"""
+
 	def __init__ ( self, pre_serializers: PreSerializers | None = None ):
 		self.name: str = self.__class__.__name__
 		self.pre_serializer = None
@@ -168,6 +170,7 @@ class ValueConverter ( ABC ):
 			old_pre_serializer = self.pre_serializer
 			self.pre_serializer = lambda v: pre_serializer ( old_pre_serializer ( v ) )
 
+
 class IdentityValueConverter ( ValueConverter ):
 	"""
 	Identity value converter for KETL.
@@ -180,6 +183,7 @@ class IdentityValueConverter ( ValueConverter ):
 
 	Note that this still supports pre-serialization via :attr:`pre_serializer`.
 	"""
+
 	def __init__ ( self, pre_serializers: PreSerializers | None = None  ):
 		super().__init__( pre_serializers )
 
@@ -199,9 +203,9 @@ class JSONBasedValueConverter ( ValueConverter ):
 	We usually set this as a default, which means, for instance, that all the strings in a
 	:class:`GraphTriple` data frame are quoted with '"'.
 	"""
+
 	def __init__ ( self, pre_serializers: PreSerializers | None = None  ):
 		super().__init__( pre_serializers )
-
 
 	def serialize ( self, v: Any ) -> str | None:
 		"""See the class description for details."""
@@ -228,8 +232,8 @@ class Mapper ( ABC ):
 
 	TODO: this clashes with names like SparkDataFrameMapper, we need to rename things to capture the distinction
 	between small chunks (like rows or cells) and whole containers (like files or DFs).
-	
 	"""
+
 	def __init__ ( 
 		self, 
 		value_converter: ValueConverter | None = None,
@@ -270,7 +274,6 @@ class Mapper ( ABC ):
 		self.value_converter = value_converter
 		if pre_serializers: self.value_converter.add_pre_serializers ( pre_serializers )
 
-
 	def serialize ( self, value: Any ) -> str | None:
 		"""
 		Helper for serialising a value using the configured :attr:`value_converter`.
@@ -278,7 +281,6 @@ class Mapper ( ABC ):
 		You should use this in methods like `value()`, after having extracted a value from a data source.
 		"""
 		return self.value_converter.serialize ( value )
-
 
 
 class PropertyMapperMixin ( ABC ):

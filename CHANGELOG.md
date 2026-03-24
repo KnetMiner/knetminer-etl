@@ -5,6 +5,7 @@
 ## 1.0.0 (unreleased)
 * PG-JSONL Neo4j loader added.
 * Some documentation added.
+* Module names and arrangement changed in a namespace-oriented way.
 
 
 ## 1.0.0.dev1 (2026-03-03)

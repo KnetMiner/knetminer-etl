@@ -426,7 +426,7 @@ class TestTabFileMapper:
 		argvalues = [ False, True ], 
 	)
 	def	test_mapping_tsv ( self, spark_session, is_infer_schema: bool ):
-		int_spark_data_type = IntegerType () if not is_infer_schema else None
+		spark_data_type = IntegerType () if not is_infer_schema else None
 		
 		# This also shows how a configuration in a real case would look like.
 		# A config file might define a constant like tb_mapper here and then this
@@ -439,8 +439,8 @@ class TestTabFileMapper:
 				ColumnMapper ( column_id = "name", property = "hasGeneName" ),
 				ColumnMapper ( "accession", "hasAccession" ),
 				ColumnMapper ( "chromosome", "hasChromosomeId" ),
-				ColumnMapper ( "begin", "hasChromosomeBegin", spark_data_type = int_spark_data_type ),
-				ColumnMapper ( "end", "hasChromosomeEnd", spark_data_type = int_spark_data_type )
+				ColumnMapper ( "begin", "hasChromosomeBegin", spark_data_type = spark_data_type ),
+				ColumnMapper ( "end", "hasChromosomeEnd", spark_data_type = spark_data_type )
 			],
 			const_prop_mappers = [
 				ConstantPropertyMapper.for_type ( "Gene" ),

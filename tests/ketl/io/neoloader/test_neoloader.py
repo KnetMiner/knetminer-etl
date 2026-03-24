@@ -32,9 +32,10 @@ def test_pg_jsonl_neo_loader_nodes (
 	- actual batching (and performance)
 	- singleton->single values, not lists
 	- OK multiple labels
-	- move from io to its own module, and add CLI wrapper to it
+	- OK move from io to its own module
+	- Add CLI wrapper
 	- OK get rid of neo warnings
-	- neo retries
+	- neo retries (in edge creation)
 	"""
 
 	pg_nodes_str = "\n".join ( json.dumps ( node ) for node in pg_nodes )
