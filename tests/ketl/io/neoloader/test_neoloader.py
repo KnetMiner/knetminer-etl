@@ -7,37 +7,39 @@ import neo4j
 import pytest
 
 from assertpy import assert_that
-from ketl.io.neoloader import pg_jsonl_neo_loader
+from ketl.io.neoloader import NeoLoaderConfig, NeoLoaderPropertyConfig, pg_jsonl_neo_loader
 
 from testcontainers.neo4j import Neo4jContainer
 
-from typing import Generator
+from typing import Generator, Iterable
 
 
 log = logging.getLogger ( __name__ )
 
+def create_multiple_multi_value_config() -> NeoLoaderConfig:
+	"""
+	Initially test in multi-valued mode, which just preserves the PG-JSONL input as is.
+
+	This is a function that creates a new config, because some tests need to change this initial config.
+	"""
+	return NeoLoaderConfig (
+		default_property_config = NeoLoaderPropertyConfig ( 
+			multi_value_mode = NeoLoaderPropertyConfig.MultiValueMode.MULTIPLE
+		)
+	)
+
 
 @pytest.mark.integration
-def test_pg_jsonl_neo_loader_nodes ( 
-	pg_nodes: list[ dict ], neo4j_container: Neo4jContainer, neo_driver: neo4j.Driver 
+def test_nodes_loading ( 
+	pg_data: tuple[ list[ dict ], list[ dict ] ], neo4j_container: Neo4jContainer, neo_driver: neo4j.Driver 
 ):
 	"""
 	Tests for :py:func:`ketl.pg_jsonl_neo_loader()`.
 
 	It uses the async driver with the loader and the sync one to verify the results via Cypher.
-
-	TODO: still missing:
-	- logs
-	- OK edges
-	- actual batching (and performance)
-	- singleton->single values, not lists
-	- OK multiple labels
-	- OK move from io to its own module
-	- Add CLI wrapper
-	- OK get rid of neo warnings
-	- neo retries (in edge creation)
 	"""
 
+	pg_nodes = pg_data[ 0 ]
 	pg_nodes_str = "\n".join ( json.dumps ( node ) for node in pg_nodes )
 
 	async_neo_driver: neo4j.AsyncDriver = create_async_neo_driver ( neo4j_container )
@@ -45,16 +47,16 @@ def test_pg_jsonl_neo_loader_nodes (
 	n_nodes = pg_jsonl_neo_loader (
 		pg_jsonl_source = pg_nodes_str,
 		neo_driver = async_neo_driver,
-		do_nodes = True, do_edges = False
+		do_nodes = True, do_edges = False,
+		config = create_multiple_multi_value_config ()
 	)
 
 	assert_that ( n_nodes, "Return value from the loader is correct" ).is_equal_to ( len ( pg_nodes ) )
 
 	# Verify via Cypher
 	for node in pg_nodes:
-		cy_labels = ":".join ( [ f"`{label}`" for label in node[ "labels" ] ] )
 		node_query = f"""
-		MATCH (n:{cy_labels} {{ id: '{node[ "id" ]}' }})
+		MATCH (n {{ id: '{node[ "id" ]}' }})
 		RETURN n
 		"""
 		with neo_driver.session() as session:
@@ -70,17 +72,15 @@ def test_pg_jsonl_neo_loader_nodes (
 					.is_equal_to ( set ( prop_values ) )
 
 
-def test_pg_jsonl_neo_loader_edges ( 
-	pg_nodes: list[ dict ], neo4j_container: Neo4jContainer, neo_driver: neo4j.Driver
+@pytest.mark.integration
+def test_edges_loading ( 
+	pg_data: tuple[ list[ dict ], list[ dict ] ], neo4j_container: Neo4jContainer, neo_driver: neo4j.Driver
 ):
 	"""
 	Tests for :py:func:`ketl.pg_jsonl_neo_loader()` with edges.
 	"""
 
-	pg_edges = [
-		{"type": "edge", "id": "encodes-protein_ENSMBL0005_QA06", "labels": ["encodes-protein"], "properties": {"source": ["NeoLoaderTest"]}, "from": "ENSMBL0005", "to": "QA06"},
-		{"type": "edge", "id": "encodes-protein_ENSMBL0007_QA07", "labels": ["encodes-protein"], "properties": {"source": ["NeoLoaderTest"], "link notes": ["Manually curated"]}, "from": "ENSMBL0007", "to": "QA07"}
-	]
+	pg_nodes, pg_edges = pg_data
 
 	pg_nodes_str = "\n".join ( json.dumps ( node ) for node in pg_nodes )
 	pg_edges_str = "\n".join ( json.dumps ( edge ) for edge in pg_edges )
@@ -93,16 +93,18 @@ def test_pg_jsonl_neo_loader_edges (
 	n_edges = pg_jsonl_neo_loader (
 		pg_jsonl_source = pg_all_str,
 		neo_driver = async_neo_driver,
-		do_nodes = True, do_edges = True
+		do_nodes = True, do_edges = True,
+		# As for the nodes, initially test the simplest multi-valued mode
+		config = create_multiple_multi_value_config ()
 	) - len ( pg_nodes ) # The loader returns the total number of created elements.
 	
 	assert_that ( n_edges, "Return value from the loader is correct" ).is_equal_to ( len ( pg_edges ) )
 	
 	# Verify via Cypher
 	for edge in pg_edges:
-		cy_labels = ":".join ( [ f"`{label}`" for label in edge[ "labels" ] ] )
+		cy_type = edge[ "labels" ] [ 0 ] 
 		edge_query = f"""
-		MATCH (from)-[r:{cy_labels} {{ id: '{edge[ "id" ]}' }}]->(to)
+		MATCH (from)-[r:`{cy_type}` {{ id: '{edge[ "id" ]}' }}]->(to)
 		WHERE from.id = '{edge[ "from" ]}' AND to.id = '{edge[ "to" ]}'
 		RETURN r
 		"""
@@ -137,7 +139,9 @@ def test_pg_jsonl_neo_loader_edges (
 				.is_equal_to ( edge[ "to" ] )	
 
 
-def test_pg_jsonl_neo_loader_large_input_nodes ( neo4j_container: Neo4jContainer, neo_driver: neo4j.Driver ):
+
+@pytest.mark.integration
+def test_large_input_nodes ( neo4j_container: Neo4jContainer, neo_driver: neo4j.Driver ):
 	async_neo_driver: neo4j.AsyncDriver = create_async_neo_driver ( neo4j_container )
 
 	input_size = 50000
@@ -172,7 +176,259 @@ def test_pg_jsonl_neo_loader_large_input_nodes ( neo4j_container: Neo4jContainer
 			assert_that ( record, f"Node N{n_id} is found in the database" ).is_not_none ()
 
 
-@pytest.fixture ( scope="module" )
+@pytest.mark.integration
+def test_multi_value_mode_single ( pg_data: tuple[ list[ dict ], list[ dict ] ], neo4j_container: Neo4jContainer, neo_driver: neo4j.Driver ):
+	"""
+	Tests a few properties set to work in :class:`NeoLoaderPropertyConfig.MultiValueMode.SINGLE` mode.
+	"""
+
+	property_ids = [ "source", "hasChromosomeBegin", "hasChromosomeEnd" ]	
+
+	pg_nodes = pg_data[ 0 ]
+	pg_nodes_str = "\n".join ( json.dumps ( node ) for node in pg_nodes )
+
+	async_neo_driver: neo4j.AsyncDriver = create_async_neo_driver ( neo4j_container )
+
+	config = create_multiple_multi_value_config ()
+	for prop_id in property_ids:
+		config.property_configs[ prop_id ] = NeoLoaderPropertyConfig ( multi_value_mode = NeoLoaderPropertyConfig.MultiValueMode.SINGLE )
+
+	n_nodes = pg_jsonl_neo_loader (
+		pg_jsonl_source = pg_nodes_str,
+		neo_driver = async_neo_driver,
+		do_nodes = True, do_edges = False,
+		config = config
+	)
+
+	assert_that ( n_nodes, "Return value from the loader is correct" ).is_equal_to ( len ( pg_nodes ) )
+	# Verify via Cypher that the properties are single-valued
+	for node in pg_nodes:
+		node_query = f"""
+		MATCH (n{{ id: '{node[ "id" ]}' }})
+		RETURN n
+		"""
+		with neo_driver.session() as session:
+			result = session.run ( node_query )
+			record = result.single()
+			node_id = node[ "id" ]
+			assert_that ( record, f"Node {node_id} is found in the database" ).is_not_none ()
+			db_node = record[ "n" ]
+			for prop_id in property_ids:
+				if not prop_id in node[ "properties" ]: continue # Only the nodes having it
+				db_prop_val = db_node.get ( prop_id )
+				original_val = node[ "properties" ][ prop_id ][ 0 ]
+				
+				assert_that ( db_prop_val, f"Node {node_id} has property '{prop_id}' in the database" ).is_not_none ()
+				
+				assert_that ( 
+					isinstance ( db_prop_val, (str, bytes) ) or not isinstance ( db_prop_val, Iterable ),
+					f"Node {node_id} has a single value for property '{prop_id}' in the database" 
+				).is_true ()
+
+				assert_that ( 
+					type ( db_prop_val ), 
+					f"Node {node_id} has property '{prop_id}' with correct type in the database"
+				).is_equal_to ( type ( original_val ) )
+
+				assert_that ( db_prop_val, f"Node {node_id} has correct value for property '{prop_id}' in the database" )\
+					.is_equal_to ( original_val )
+				
+
+@pytest.mark.integration
+def test_multi_value_mode_single_fails_for_multi_values ( pg_data: tuple[ list[ dict ], list[ dict ] ], neo4j_container: Neo4jContainer, neo_driver: neo4j.Driver ):
+	"""
+	Tests that when a property is set to :class:`NeoLoaderPropertyConfig.MultiValueMode.SINGLE` mode, the loading fails for multi-value instances of that property.
+	"""
+
+	property_id = "link notes"	
+
+	# Let's test with the edges this time
+	pg_nodes, pg_edges = pg_data
+	pg_nodes_str = "\n".join ( json.dumps ( node ) for node in pg_nodes )
+	pg_edges_str = "\n".join ( json.dumps ( edge ) for edge in pg_edges )
+	pg_all_str = pg_nodes_str + "\n" + pg_edges_str
+
+	async_neo_driver: neo4j.AsyncDriver = create_async_neo_driver ( neo4j_container )
+
+	config = create_multiple_multi_value_config ()
+	config.property_configs[ property_id ] = NeoLoaderPropertyConfig ( multi_value_mode = NeoLoaderPropertyConfig.MultiValueMode.SINGLE )
+
+	assert_that ( 
+		pg_jsonl_neo_loader,
+		"Loading fails when a property set to SINGLE mode has multiple values" 
+	).raises ( ValueError )\
+	.when_called_with (
+		pg_jsonl_source = pg_all_str,
+		neo_driver = async_neo_driver,
+		config = config
+	).matches ( f"multiple values aren't allowed for property '{property_id}'" )
+
+
+@pytest.mark.integration
+def test_multi_value_mode_auto ( pg_data: tuple[ list[ dict ], list[ dict ] ], neo4j_container: Neo4jContainer, neo_driver: neo4j.Driver ):
+	"""
+	Tests the default multi-value mode :class:`NeoLoaderPropertyConfig.MultiValueMode.AUTO`
+
+	(As said above, the other tests use the :class:`NeoLoaderPropertyConfig.MultiValueMode.MULTIPLE` as 
+	their default, since this is the simplest case for the loader).
+	"""
+	pg_nodes, pg_edges = pg_data
+	pg_nodes_str = "\n".join ( json.dumps ( node ) for node in pg_nodes )
+	pg_edges_str = "\n".join ( json.dumps ( edge ) for edge in pg_edges )
+	pg_all_str = pg_nodes_str + "\n" + pg_edges_str
+
+	async_neo_driver: neo4j.AsyncDriver = create_async_neo_driver ( neo4j_container )
+
+	n_elements = pg_jsonl_neo_loader (
+		pg_jsonl_source = pg_all_str,
+		neo_driver = async_neo_driver,
+		do_nodes = True, do_edges = True
+	)
+
+	assert_that ( n_elements, "Return value from the loader is correct" ).is_equal_to ( len ( pg_nodes ) + len ( pg_edges ) )
+
+	# Verify via Cypher that if a property has a single value in the input, it is stored as a single value (not as a list) and
+	# it's stored as a list otherwise
+	for elem in pg_nodes + pg_edges:
+		id = elem[ "id" ]
+		elem_type = elem[ "type" ]
+		cypher = \
+			f"""
+			MATCH (e {{ id: '{id}' }})
+			RETURN e
+			"""\
+			if elem_type == "node" else \
+			f"""
+			MATCH (from)-[e {{ id: '{id}' }}]->(to)
+			RETURN e
+			"""
+		with neo_driver.session() as session:
+			result = session.run ( cypher )
+			record = result.single()
+			assert_that ( record, f"Element {id} is found in the database" ).is_not_none ()
+			db_elem = record[ "e" ]
+			for prop_key, prop_values in elem[ "properties" ].items():
+				db_val = db_elem.get ( prop_key )
+				assert_that ( db_val, f"Element {id} has property '{prop_key}' in the database" ).is_not_none ()
+				if len ( prop_values ) == 1:
+					assert_that ( db_val, f"Element {id} has a single value for property '{prop_key}' in the database" )\
+						.is_equal_to ( prop_values[0] )
+				else:
+					assert_that ( set ( db_val ), f"Element {id} has a list value for property '{prop_key}' in the database" )\
+						.is_equal_to ( set ( prop_values ) )
+
+
+@pytest.mark.integration
+def test_null_properties_ignored ( pg_data: tuple[ list[ dict ], list[ dict ] ], neo4j_container: Neo4jContainer, neo_driver: neo4j.Driver ):
+	"""
+	Tests that properties with None or empty list values in the input aren't stored in the database.
+	"""
+	pg_nodes, pg_edges = pg_data
+	
+	# Probe elements
+	props = {
+		"nullProp": None, 
+		"emptyProp": [], # ignored too
+		# None is always removed, no matter where it is. TODO: document it
+		"nullSingletonProp": [ None ],
+		"dirtyProp": [ None, "value" ],
+		"regProp": [ "value" ],
+		"regPropMulti": [ "value1", "value2" ]
+	}
+	pg_nodes += [{ "type": "node", "id": "null-test:01", "labels": [ "TestNode" ], "properties": props }]
+	pg_edges += [{ 
+		"type": "edge", "id": "null-test:02", "labels": [ "hasTestLink" ], "properties": props,
+		"from": pg_nodes[0][ "id" ], "to": pg_nodes[1][ "id" ]
+	}]
+
+	pg_nodes_str = "\n".join ( json.dumps ( node ) for node in pg_nodes )
+	pg_edges_str = "\n".join ( json.dumps ( edge ) for edge in pg_edges )
+	pg_all_str = pg_nodes_str + "\n" + pg_edges_str
+
+	async_neo_driver: neo4j.AsyncDriver = create_async_neo_driver ( neo4j_container )
+
+	n_elements = pg_jsonl_neo_loader (
+		pg_jsonl_source = pg_all_str,
+		neo_driver = async_neo_driver,
+		do_nodes = True, do_edges = True
+	)
+
+	assert_that ( n_elements, "Return value from the loader is correct" ).is_equal_to ( len ( pg_nodes ) + len ( pg_edges ) )
+
+	# Verify via Cypher that properties with null values aren't stored, regular properties are stored 
+	# as usually. 
+	for elem in pg_nodes + pg_edges:
+		id = elem[ "id" ]
+		elem_type = elem[ "type" ]
+		cypher = \
+			f"""
+			MATCH (e {{ id: '{id}' }})
+			RETURN e
+			"""\
+			if elem_type == "node" else \
+			f"""
+			MATCH (from)-[e {{ id: '{id}' }}]->(to)
+			RETURN e
+			"""
+		with neo_driver.session() as session:
+			result = session.run ( cypher )
+			record = result.single()
+			assert_that ( record, f"Element {id} is found in the database" ).is_not_none ()
+			db_elem = record[ "e" ]
+			for prop_key, prop_values in elem [ "properties" ].items():
+				# As said above, all None, at any level, are thrown away, hence we need to test without them
+				prop_values = [ v for v in prop_values if v is not None ] if prop_values is not None else None
+				
+				if not prop_values:
+					assert_that ( db_elem.get ( prop_key ), f"Element {id} doesn't have property '{prop_key}' in the database" )\
+						.is_none ()
+					continue
+
+				db_val = db_elem.get ( prop_key )
+				assert_that ( db_val, f"Element {id} has property '{prop_key}' in the database" ).is_not_none ()
+				if len ( prop_values ) == 1:
+					assert_that ( db_val, f"Element {id} has a single value for property '{prop_key}' in the database" )\
+						.is_equal_to ( prop_values[0] )
+				else:
+					assert_that ( set ( db_val ), f"Element {id} has a list value for property '{prop_key}' in the database" )\
+						.is_equal_to ( set ( prop_values ) )
+
+@pytest.fixture ()
+def pg_data ( request ) -> tuple[ list[ dict ], list[ dict ] ]:
+	"""
+	A fixture providing a pair of test nodes and edges to test the Neo4j loader. 
+	This is used in multiple tests (eg, node loading, edge loading).
+
+	Prefixes all the IDs with the test function, to avoid conflicts between data created by different tests.
+	"""
+
+	def make_id ( elem_id: str ) -> str:
+		return f"{request.node.name}:{elem_id}"
+	
+	# Coming from the output of pg_df_2_pg_jsonl() 
+	pg_nodes = [
+		{"type": "node", "id": "ENSMBL0005", "labels": ["Gene"], "properties": {"hasAccession": ["ENSMBL0005"], "source": ["NeoLoaderTest"], "hasChromosomeId": ["10E"], "hasChromosomeEnd": [87971930], "hasGeneName": ["PTEN"], "hasChromosomeBegin": [87863119]}},
+		{"type": "node", "id": "ENSMBL0007", "labels": ["Gene"], "properties": {"hasAccession": ["ENSMBL0007"], "source": ["NeoLoaderTest"], "hasChromosomeId": ["12G"], "hasChromosomeEnd": [25250930], "hasGeneName": ["KRAS"], "hasChromosomeBegin": [25205246]}},
+		{"type": "node", "id": "QA06", "labels": ["Protein"], "properties": {"hasAccession": ["QA06"], "hasProteinName": ["PTEN", "APC"], "source": ["NeoLoaderTest"]}},
+		{"type": "node", "id": "QA07", "labels": ["Protein"], "properties": {"hasAccession": ["QA07"], "hasProteinName": ["KRAS"], "source": ["NeoLoaderTest"]}}
+	]
+	pg_edges = [
+		{"type": "edge", "id": "encodes-protein_ENSMBL0005_QA06", "labels": ["encodes-protein"], "properties": {"source": ["NeoLoaderTest"]}, "from": "ENSMBL0005", "to": "QA06"},
+		{"type": "edge", "id": "encodes-protein_ENSMBL0007_QA07", "labels": ["encodes-protein"], "properties": {"source": ["NeoLoaderTest"], "link notes": ["Manually curated", "Revision 1"]}, "from": "ENSMBL0007", "to": "QA07"}
+	]
+
+	for elem in pg_nodes + pg_edges:
+		elem [ "id" ] = make_id ( elem[ 'id' ] )
+		
+		if elem [ "type" ] != "edge": continue
+
+		elem [ "from" ] = make_id ( elem[ 'from' ] )
+		elem [ "to" ] = make_id ( elem[ 'to' ] )
+
+	return pg_nodes, pg_edges
+
+
+@pytest.fixture ( scope = "module" )
 def neo4j_container() -> Generator[ Neo4jContainer, None, None ]:
 	"""
 	The test container common to all driver fixtures and all the tests.
@@ -211,19 +467,3 @@ def neo_driver ( neo4j_container: Neo4jContainer ) -> Generator[ neo4j.Driver, N
 	This doesn't have async issues and hence we can manage it through a fixture.
 	"""
 	yield neo4j_container.get_driver ()
-
-
-@pytest.fixture ( scope = "module" )
-def pg_nodes () -> list[ dict ]:
-	"""
-	A fixture providing nodes to test the Neo4j loader. This is used in multiple tests (eg, node loading, 
-	edge loading).
-	"""
-	# Coming from the output of pg_df_2_pg_jsonl() 
-	pg_nodes = [
-		{"type": "node", "id": "ENSMBL0005", "labels": ["Gene"], "properties": {"hasAccession": ["ENSMBL0005"], "source": ["NeoLoaderTest"], "hasChromosomeId": ["10E"], "hasChromosomeEnd": [87971930], "hasGeneName": ["PTEN"], "hasChromosomeBegin": [87863119]}},
-		{"type": "node", "id": "ENSMBL0007", "labels": ["Gene"], "properties": {"hasAccession": ["ENSMBL0007"], "source": ["NeoLoaderTest"], "hasChromosomeId": ["12G"], "hasChromosomeEnd": [25250930], "hasGeneName": ["KRAS"], "hasChromosomeBegin": [25205246]}},
-		{"type": "node", "id": "QA06", "labels": ["Protein"], "properties": {"hasAccession": ["QA06"], "hasProteinName": ["PTEN", "APC"], "source": ["NeoLoaderTest"]}},
-		{"type": "node", "id": "QA07", "labels": ["Protein"], "properties": {"hasAccession": ["QA07"], "hasProteinName": ["KRAS"], "source": ["NeoLoaderTest"]}}
-	]
-	return pg_nodes

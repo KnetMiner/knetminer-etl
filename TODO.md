@@ -4,3 +4,17 @@
 * [ ] Factorise the root module?
 * [X] CI
 * [X] isort and other code quality tools
+
+## NeoLoader
+* [ ] More logs
+* [X] Edges
+* [ ] Actual batching (and performance)
+* [X] Singleton->single values, not lists
+* [ ] Use value converters?
+* [X] Nullable properties
+* [X] Multiple labels
+* [X] Move from io to its own module
+* [ ] Add CLI wrapper
+* [ ] Loading in Snake workflow
+* [X] Get rid of neo warnings
+* [ ] Neo retries (in edge creation)

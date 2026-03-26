@@ -1,5 +1,7 @@
 import asyncio
 import concurrent
+from dataclasses import dataclass, field
+from enum import StrEnum
 import json
 from itertools import islice
 import logging
@@ -11,6 +13,7 @@ from brandizpyes.logging import ProgressLogger
 import re
 from pathlib import Path
 from typing import Any, Callable, Iterable, TextIO
+from collections.abc import KeysView
 
 
 log = logging.getLogger ( __name__ )
@@ -26,13 +29,97 @@ class NeoLoaderDefaults:
 	DO_EDGES = True
 
 
+@dataclass ()
+class NeoLoaderPropertyConfig:
+	"""
+	A container of configuration options for a PG property, which is used by the NeoLoader to 
+	tune the loading from the PG format.
+	"""
+
+	class MultiValueMode ( StrEnum ):
+		"""
+		How to deal with multiple values.
+
+		PG-JSONL always represents a property as an array, so we need to know if it actually contains
+		an **set** of values, a single value (ie, a singleton in PG-JSONL) or you want to auto-detect it.
+
+		PG-JSONL arrays are always considered **sets**, ie, the order is irrelevant and might be changed
+		during a process like Neo4j loading, duplicates should not be present and might be removed. 
+		This is due to the fact that values can come from multiple ETL flows and considering order or
+		duplicates is usually both hard and not needed.
+		
+		If you really need to store these features, consider other approaches, eg, nodes with properties
+		like index, value, repetitions.
+		"""
+
+		SINGLE = "single"
+		"""
+		The property is always single-valued, if an array is met that contains more than one value, an error is raised.
+		"""		
+		
+		MULTIPLE = "multiple"
+		"""
+		The property is always multiple-values, all the values are converted into a set or list, even
+		for singletons.
+		"""
+
+		AUTO = "auto"
+		"""
+		The property can either have single or multiple values, depending on the size of the array
+		that is found in PG-JSONL, it is converted into a single value if it is a singleton, or into 
+		a set/list if it has a bigger array.
+
+		This is the default, but we don't recommend it, since you'll have to deal with this polymorphism
+		in the target database, and your semantics is rarely like this.
+		"""
+
+	multi_value_mode: MultiValueMode = MultiValueMode.AUTO
+
+@dataclass
+class NeoLoaderConfig:
+	# TODO: field() is needed for mutable defaults, but it feels like mumbo-jumbo, maybe
+	# we should go back to regular classes.
+	property_configs: dict[str, NeoLoaderPropertyConfig] = field( default_factory = dict )
+	"""
+	A dictionary of property ID -> configuration for that property.
+	See :class:`NeoLoaderPropertyConfig` for details.
+	"""
+
+	default_property_config: NeoLoaderPropertyConfig = field( default_factory = NeoLoaderPropertyConfig )
+	"""
+	Default fallback configuration for properties not present in `property_configs`.
+	This might useful in tests, to change the default config for all properties in one go.
+	"""
+
+	loader_batch_size: int = NeoLoaderDefaults.BATCH_SIZE
+	"""
+	Neo4j loads one batch of nodes or edges per transaction, and this is the batch size.
+	"""
+	
+	loader_max_concurrency: int = NeoLoaderDefaults.MAX_CONCURRENCY
+	"""
+	The maximum number of concurrent batch loaders. The loader has this number of 
+	parallel JSON parsers and this number of concurrent batch loading transactions (see the main_loop` 
+	function inside `async_pg_jsonl_neo_loader` for details). It uses the common default of all the 
+	available CPU cores minus one (left to the main thread). You should be fine with this, except, 
+	maybe, in cases like tests or debugging.	
+	"""
+
+	def get_property_config ( self, property_id: str ) -> NeoLoaderPropertyConfig:
+		if not property_id in self.property_configs:
+			return self.default_property_config
+		return self.property_configs [ property_id ]
+	
+	def get_property_ids ( self ) -> KeysView[str]:
+		return self.property_configs.keys()
+
+
 async def async_pg_jsonl_neo_loader (
 	pg_jsonl_source: str|Path|TextIO|Iterable[Any]|None,
 	neo_driver: neo4j.AsyncDriver,
 	do_nodes = NeoLoaderDefaults.DO_NODES,
 	do_edges = NeoLoaderDefaults.DO_EDGES,
-	loader_batch_size: int = NeoLoaderDefaults.BATCH_SIZE,
-	loader_max_concurrency: int = NeoLoaderDefaults.MAX_CONCURRENCY
+	config: NeoLoaderConfig = NeoLoaderConfig()
 ) -> int:
 	"""
 	Loads a JSONL/PG file (see :func:`ketl.pg_df_2_pg_jsonl`) into a Neo4j database, through the provided driver.
@@ -70,12 +157,8 @@ async def async_pg_jsonl_neo_loader (
 	or edge definitions only, which can be useful for testing or to have more incremental updates in a SnakeMake
 	pipeline. **WARNING**: you **can't** load edges that refer to nodes not loaded in the database, see above.
 
-	- loader_batch_size: Neo4j loads one batch of nodes or edges per transaction, and this is the batch size.
+	- config: the configuration object for the NeoLoader, containing settings like batch size and maximum concurrency.
 
-	- loader_max_concurrency: the maximum number of concurrent batch loaders. The loader has this number of 
-	parallel JSON parsers and this number of concurrent batch loading transactions (see the internal `main_loop` 
-	function for details). It uses the common default of all the available CPU cores minus one (left to the main 
-	thread). You should be fine with this, except, maybe, in cases like tests or debugging.	
 
 	## Returns:
 
@@ -107,7 +190,59 @@ async def async_pg_jsonl_neo_loader (
 		When the input is exhausted, waits for all the batch loaders to complete and returns the total number 
 		of loaded elements.
 		"""
-		executor = concurrent.futures.ThreadPoolExecutor ( max_workers = loader_max_concurrency )
+
+		def parse_pg_elem_property ( prop_id: str, pg_value: list[Any], elem_id: str ) -> dict[str, Any]:
+			"""
+			Parses a PG property value, applying the configuration for that property as needed.
+
+			At the moment, the only configuration is how to deal with multiple values, but more can be added in the future.
+			"""
+			if pg_value is None: return None # TODO: can it happen?
+			if not isinstance ( pg_value, list ):
+				raise ValueError ( f"pg_jsonl_neo_loader(), property '{prop_id}' in element '{elem_id}' has a non-list value" )
+
+			# Remove None values from the list. TODO: can it happen?
+			pg_value = [ v for v in pg_value if v is not None ]
+			if len ( pg_value ) == 0: return None
+
+			prop_config = config.get_property_config ( prop_id )
+			result = None
+
+			if len ( pg_value ) == 1:
+				if prop_config.multi_value_mode in ( NeoLoaderPropertyConfig.MultiValueMode.SINGLE, NeoLoaderPropertyConfig.MultiValueMode.AUTO ):
+					result = pg_value [ 0 ]
+				else:
+					# it's multiple mode
+					result = pg_value
+			else:
+				# > 1 case
+				if prop_config.multi_value_mode == NeoLoaderPropertyConfig.MultiValueMode.SINGLE:
+					raise ValueError ( f"pg_jsonl_neo_loader(), multiple values aren't allowed for property '{prop_id}' in element '{elem_id}'" )
+				# else, we're in auto or multiple
+				result = list ( set ( pg_value ) ) # Remove duplicates, and convert to list for better Neo4j compatibility.
+
+			return result
+
+		def parse_jsonl_batch ( batch: list[str] ) -> list[dict[str, Any]]:
+			# Parse it all, it's faster
+			js_batch = json.loads ( "[" + ",".join ( js_line for js_line in batch ) + "]" )
+
+			# Apply the property configurations to each element
+			for elem in js_batch:
+				elem_id = elem [ "id" ]
+				# We need a copy, since we might change the dict
+				for prop_id in list ( elem.get ( "properties", {} ).keys () ):
+					pg_value = elem [ "properties" ][ prop_id ]
+					new_value = parse_pg_elem_property ( prop_id, pg_value, elem_id )
+					if new_value is None:
+						# Just don't store it
+						elem [ "properties" ].pop ( prop_id )
+					elif new_value != pg_value:
+						elem [ "properties" ][ prop_id ] = new_value
+					# else, keep it
+			return js_batch
+
+		executor = concurrent.futures.ThreadPoolExecutor ( max_workers = config.loader_max_concurrency )
 		n_loaded = 0
 
 		type_filter = "node" if is_nodes_mode else "edge"
@@ -127,12 +262,12 @@ async def async_pg_jsonl_neo_loader (
 		# pg_elems_source = ( line for line in pg_elems_source if line_debugger ( line ) )
 
 		while True:
-			batch = list ( islice ( pg_elems_source, loader_batch_size ) )
+			batch = list ( islice ( pg_elems_source, config.loader_batch_size ) )
 			if not batch: break
 
 			loop = asyncio.get_running_loop()
-			# Parse the JSON lines in parallel
-			pg_elems: list[dict[str, Any]] = await loop.run_in_executor ( executor, lambda: json.loads ( "[" + ",".join ( js_line for js_line in batch ) + "]" ) )
+			# Parse/transform the JSON lines in parallel
+			pg_elems: list[dict[str, Any]] = await loop.run_in_executor ( executor, parse_jsonl_batch, batch )
 
 			# Do the loading asynchronously. So, we have parallel parsers added to the main thread running the source
 			# scanning plus the loaders in the event loop.
@@ -239,8 +374,7 @@ def pg_jsonl_neo_loader (
 	neo_driver: neo4j.AsyncDriver,
 	do_nodes = NeoLoaderDefaults.DO_NODES,
 	do_edges = NeoLoaderDefaults.DO_EDGES,
-	loader_batch_size: int = NeoLoaderDefaults.BATCH_SIZE,
-	loader_max_concurrency: int = NeoLoaderDefaults.MAX_CONCURRENCY
+	config: NeoLoaderConfig = NeoLoaderConfig()
 ) -> int:
 	"""
 	Loads a JSONL/PG file (see :func:`ketl.pg_df_2_pg_jsonl`) into a Neo4j database, through the provided driver.
@@ -253,5 +387,5 @@ def pg_jsonl_neo_loader (
 	stumble upon errors. In that case, use :func:`ketl.async_pg_jsonl_neo_loader` instead.
 	"""
 	return asyncio.run ( async_pg_jsonl_neo_loader (
-		pg_jsonl_source, neo_driver, do_nodes, do_edges, loader_batch_size, loader_max_concurrency
+		pg_jsonl_source, neo_driver, do_nodes, do_edges, config
 	))
