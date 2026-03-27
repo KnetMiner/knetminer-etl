@@ -10,7 +10,8 @@
 * [X] Edges
 * [ ] Actual batching (and performance)
 * [X] Singleton->single values, not lists
-* [ ] Use value converters?
+* [X] Use value converters?
+	* No, see the note in `async_pg_jsonl_neo_loader()`
 * [X] Nullable properties
 * [X] Multiple labels
 * [X] Move from io to its own module
@@ -18,3 +19,4 @@
 * [ ] Loading in Snake workflow
 * [X] Get rid of neo warnings
 * [ ] Neo retries (in edge creation)
+* [ ] done flag (for Snakemake)

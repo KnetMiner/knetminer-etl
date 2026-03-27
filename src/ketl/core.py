@@ -123,8 +123,9 @@ class ValueConverter ( ABC ):
 		However, this isn't good, since the method should return a string, while the pre-serialiser 
 		returns Any type.
 
-		So, now we don't have any implementation, use `self.pre_serialize()` when you extend this
-		method (which should be always needed).
+		So, now we don't have any default implementation, use `self.pre_serialize()` when you extend 
+		this method (which should be always needed), to convert the value coming from the pre-serialiser
+		into a string representation, and based on the specific converter you're defining.
 		"""
 
 	@abstractmethod

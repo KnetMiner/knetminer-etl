@@ -64,14 +64,14 @@ pyflakes = ">=3.0.0"
 
 [[package]]
 name = "brandizpyes"
-version = "2.1.0"
+version = "2.2.0"
 description = "Brandiz Pyes - Python Utilities"
 optional = false
 python-versions = ">=3.11"
 groups = ["main"]
 files = [
-    {file = "brandizpyes-2.1.0-py3-none-any.whl", hash = "sha256:a3fa45875ec7cb4b8565199de6f7ed45600dfe92eba7b4bd62d10344b67b46a0"},
-    {file = "brandizpyes-2.1.0.tar.gz", hash = "sha256:f76a70d4008bd200bca98c65696c7b281a70e83b15f2ea5ff52eb02e623c2134"},
+    {file = "brandizpyes-2.2.0-py3-none-any.whl", hash = "sha256:af31ee21a35f5d531e6d240a4060cf3678435141f90f20c5817085b186e170d1"},
+    {file = "brandizpyes-2.2.0.tar.gz", hash = "sha256:f69e1d7a49a9c2ab7ced4ad2b506934ac5146df980b7e9d48c9b1ac2c6adf10e"},
 ]
 
 [package.dependencies]

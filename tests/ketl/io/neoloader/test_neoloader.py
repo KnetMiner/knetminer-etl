@@ -1,6 +1,7 @@
 
 import json
 import logging
+from pathlib import Path
 import random
 
 import neo4j
@@ -138,6 +139,28 @@ def test_edges_loading (
 			assert_that ( record[ "to" ].get ( "id" ), f"Edge {edge['id']} links the expected target node" )\
 				.is_equal_to ( edge[ "to" ] )	
 
+
+def test_loading_from_file ( 
+	pg_data: tuple[ list[ dict ], list[ dict ] ], 
+	tmp_path: Path,
+	neo4j_container: Neo4jContainer, neo_driver: neo4j.Driver ):
+	pg_nodes, pg_edges = pg_data
+	pg_nodes_str = "\n".join ( json.dumps ( node ) for node in pg_nodes )
+	pg_edges_str = "\n".join ( json.dumps ( edge ) for edge in pg_edges )
+	pg_all_str = pg_nodes_str + "\n" + pg_edges_str
+
+	tmp_input_path = tmp_path / "neo-loader-test-pg.jsonl"
+	tmp_input_path.write_text ( pg_all_str )
+
+	async_neo_driver: neo4j.AsyncDriver = create_async_neo_driver ( neo4j_container )
+
+	n_nodes = pg_jsonl_neo_loader (
+		pg_jsonl_source = tmp_input_path,
+		neo_driver = async_neo_driver,
+		do_nodes = True, do_edges = True
+	)
+
+	assert_that ( n_nodes, "Return value from the loader is correct" ).is_equal_to ( len ( pg_nodes ) + len ( pg_edges ) )
 
 
 @pytest.mark.integration

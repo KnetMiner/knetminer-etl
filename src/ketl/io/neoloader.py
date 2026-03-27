@@ -8,7 +8,7 @@ import logging
 import os
 
 import neo4j
-from brandizpyes.io import reader_helper
+from brandizpyes.io import async_reader_helper
 from brandizpyes.logging import ProgressLogger
 import re
 from pathlib import Path
@@ -143,10 +143,10 @@ async def async_pg_jsonl_neo_loader (
 	ie, its `seek()` method must work correctly.
 
 
-	## Parameters:
+	## Parameters
 
 	- pg_jsonl_source: the source of the JSONL/PG data. 
-	This is passed to :func:`ketl.reader_helper`, so it can be a file path, a file-like object,
+	This is passed to :func:`ketl.async_reader_helper`, so it can be a file path, a file-like object,
 	a string of PG-JSON data, None (to get data from the stdin). **WARNING**: as said above, when 
 	both `do_nodes` and `do_edges` are set, the `pg_jsonl_source` can't be neither an iterator 
 	nor None/stdin.
@@ -160,11 +160,17 @@ async def async_pg_jsonl_neo_loader (
 	- config: the configuration object for the NeoLoader, containing settings like batch size and maximum concurrency.
 
 
-	## Returns:
+	## Returns
 
 	The number of nodes+edges loaded.
 
-	TODO: it doesn't need separated files, since the JSONL items report their type.
+	
+	## Notes
+
+	Note that we don't use any :class:`ketl.core.ValueConverter` here and no unserialisation from strings, 
+	since we assume the PG-JSONL already has values in a format that can always be translated to Neo4j. 
+	This is motivated by the fact that conversions are made by upstream functions in KETL, eg, 
+	:func:`ketl.io.core.pg_df_2_pg_jsonl`.
 	"""
 
 	progress_logger = ProgressLogger (
@@ -178,7 +184,7 @@ async def async_pg_jsonl_neo_loader (
 
 	async def main_loop ( pg_elems_source: TextIO|Iterable[str], is_nodes_mode: bool, batch_loader: Callable[ [list[dict[str, Any]]], int ] ) -> int:
 		"""
-		The generic reader, passed to :func:`ketl.reader_helper`.
+		The generic reader, passed to :func:`ketl.async_reader_helper`.
 
 		This reads the source of PG nodes or edges, batches them into batches of `loader_batch_size` elements, 
 		and sends each batch to the provided `batch_loader`, which is responsible for loading the batch into the 
@@ -256,6 +262,7 @@ async def async_pg_jsonl_neo_loader (
 			log.debug ( f"line is {line}" )
 			return line and re.search ( type_re, line )
 
+		log.warning (f"Before islice, closed: {getattr(pg_elems_source, 'closed', 'N/A')}")
 		pg_elems_source = ( line for line in pg_elems_source if line and re.search ( type_re, line ) )
 
 		# TODO: remove me 
@@ -332,23 +339,36 @@ async def async_pg_jsonl_neo_loader (
 				+ " Pass me a string, a path or a rewindable file-like object."
 			)
 
+	# Some heading in the log
+	source_str = None
+	if isinstance ( pg_jsonl_source, Path ):
+		source_str = f'"{pg_jsonl_source}"'
+	elif pg_jsonl_source is None:
+		source_str = "<stdin>"
+	else:
+		source_str = f" a {type ( pg_jsonl_source )} object"
+
+	log.info ( f"|==== pg_jsonl_neo_loader(), loading from {source_str}" )
+
 	n_nodes = n_edges = 0
 
 	if not do_nodes:
-		log.info ( f"pg_jsonl_neo_loader(), do_nodes not set, skipping node loading" )
+		log.info ( f"pg_jsonl_neo_loader(), do_nodes not set, skipping nodes loading" )
 	else:
 		log.info ( f"|== Loading Nodes" )
 		progress_logger.log_message_template = "%d knowledge graph nodes loaded"
-		n_nodes = await reader_helper (
+		# See the async_reader_helper docstring on why we need the async flavour of this helper
+		# when the reader is async.
+		n_nodes = await async_reader_helper (
 			lambda src: main_loop ( src, is_nodes_mode = True, batch_loader = nodes_load ),
 			pg_jsonl_source
 		)
+		log.info ( f"|== A total of {n_nodes} node(s) loaded." )
 
 	if not do_edges:
-		log.info ( f"pg_jsonl_neo_loader(), do_edges not set, skipping edge loading" )
+		log.info ( f"pg_jsonl_neo_loader(), do_edges not set, skipping edges loading" )
 	else:
-		msg = f"{n_nodes} nodes loaded. Loading Edges" if do_nodes else "Loading Edges"
-		log.info ( f"|== {msg}" )
+		log.info ( f"|== Loading Edges" )
 
 		# Rewind as needed
 		if do_nodes and source_has_seek:
@@ -357,14 +377,16 @@ async def async_pg_jsonl_neo_loader (
 			except IOError as ex:
 				raise IOError ( f"pg_jsonl_neo_loader(), failed to rewind the source for edge loading: {ex}", cause = ex )
 
-		progress_logger.log_message_template = "%d knowledge graph edges loaded"
-		n_edges = await reader_helper (
+		# Restart the progress logger from 0 edges and with a new message
+		progress_logger.reset ()
+		progress_logger.log_message_template = "%d knowledge graph edges loaded" 
+		n_edges = await async_reader_helper (
 			lambda src: main_loop ( src, is_nodes_mode = False, batch_loader = edges_load ),
 			pg_jsonl_source
 		)
-		log.info ( f"|== {n_edges} edges loaded." )
+		log.info ( f"|== A total of {n_edges} edge(s) loaded." )
 
-	log.info ( f"A total of {n_nodes + n_edges} elements loaded, all done." )
+	log.info ( f"|==== pg_jsonl_neo_loader(), a total of {n_nodes + n_edges} element(s) loaded. All done!" )
 
 	return n_nodes + n_edges
 
