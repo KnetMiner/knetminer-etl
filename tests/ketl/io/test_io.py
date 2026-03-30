@@ -4,7 +4,6 @@ import pprint
 import sys
 import pytest
 from assertpy import assert_that
-from ketl.test.utils import forward_spark_session_fixture
 from pyspark.sql import SparkSession
 
 from ketl.core import GraphTriple, PGElementType
@@ -14,12 +13,16 @@ from ketl.io.core import pg_df_2_pg_jsonl, triples_2_pg_df
 log = logging.getLogger ( __name__ )
 
 
-@pytest.fixture ( scope = "module", autouse = True )
-def _forward_spark_session_fixture ( spark_session: SparkSession ):
+@pytest.fixture ( scope = "class", autouse = True )
+def forward_spark_session_fixture ( request, spark_session: SparkSession ):
 	"""
-	Forwards the spark_session fixture to global _spark_session, see the invoked function for details.
+	Forwards the spark_session fixture to the classes below, which need it at classmethod level 
+	to initialise test data.
+
+	Note that autouse = True causes all the classes in the module to get the fixture, which is 
+	what we currently need. Switch to @pytest.mark.usefixtures if this changes in the future.
 	"""
-	forward_spark_session_fixture ( spark_session, module = sys.modules[ __name__ ] )
+	request.cls.spark_session = spark_session
 
 
 @pytest.mark.integration
@@ -53,8 +56,7 @@ class TestTriples2PgDf ():
 				("N004", GraphTriple.TYPE_KEY, "EmptyNode" )
 			]
 
-			global _spark_session
-			df = _spark_session.createDataFrame ( cls.node_triples, schema = GraphTriple.DATAFRAME_SCHEMA_LIST )
+			df = cls.spark_session.createDataFrame ( cls.node_triples, schema = GraphTriple.DATAFRAME_SCHEMA_LIST )
 			log.info ( "Test Node triples:\n%s", df.toPandas().to_markdown() )
 
 			# And its mapping
@@ -83,8 +85,7 @@ class TestTriples2PgDf ():
 				("E004", GraphTriple.TYPE_KEY, "links"),
 			]
 
-			global _spark_session
-			df = _spark_session.createDataFrame ( cls.edge_triples, schema = GraphTriple.DATAFRAME_SCHEMA_LIST )
+			df = cls.spark_session.createDataFrame ( cls.edge_triples, schema = GraphTriple.DATAFRAME_SCHEMA_LIST )
 			log.info ( "TestEdge triples:\n%s", df.toPandas().to_markdown() )
 
 			# Mapping, as above
@@ -220,8 +221,7 @@ class TestPgDf2PgJSONL ():
 				( "N004", ["EmptyNode"], {}, "node" ),
 			]
 			pg_df_schema = [ "id", "labels", "properties", "type" ] # TODO: put in a constant
-			global _spark_session
-			cls.nodes_pg_df = _spark_session.createDataFrame ( pg, schema = pg_df_schema )
+			cls.nodes_pg_df = cls.spark_session.createDataFrame ( pg, schema = pg_df_schema )
 		
 		def create_edges_pg_df ():
 			log.info ( "Creating test PG edges DataFrame" )
@@ -232,8 +232,7 @@ class TestPgDf2PgJSONL ():
 				( "E004", ["links"], {}, "N004", "N001", "edge" ),
 			]
 			pg_df_schema = [ "id", "labels", "properties", "from", "to", "type" ] # TODO: put in a constant
-			global _spark_session
-			cls.edges_pg_df = _spark_session.createDataFrame ( pg, schema = pg_df_schema )
+			cls.edges_pg_df = cls.spark_session.createDataFrame ( pg, schema = pg_df_schema )
 
 		def jsonl_str_to_list ( jsonl_str: str ) -> list[ dict ]:
 			"""

@@ -4,7 +4,7 @@ See tests/resources/tabmap-test.snakefile
 
 """
 from ketl.core import ConstantPropertyMapper
-from ketl.tabmap import ColumnMapper, IdColumnMapper, TabFileMapper
+from ketl.tabmap.core import ColumnMapper, IdColumnMapper, TabFileMapper
 
 PROTEINS_MAPPER = TabFileMapper (
 	id_mapper = IdColumnMapper ( column_id = "accession" ),	

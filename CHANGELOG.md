@@ -1,6 +1,6 @@
 # Changelog
 
-*This file was updated on 2026-03-11. Please keep this note up to date.*
+*This file was updated on 2026-03-27. Please keep this note up to date.*
 
 ## 1.0.0 (unreleased)
 * PG-JSONL Neo4j loader added.
