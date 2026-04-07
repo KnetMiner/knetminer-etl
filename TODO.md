@@ -18,5 +18,5 @@
 * [ ] Add CLI wrapper
 * [ ] Loading in Snake workflow
 * [X] Get rid of neo warnings
-* [ ] Neo retries (in edge creation)
+* [X] Neo retries (in edge creation)
 * [X] done flag (for Snakemake)

@@ -1,6 +1,7 @@
 import asyncio
 import concurrent
 from dataclasses import dataclass, field
+from datetime import timedelta
 from enum import StrEnum
 import json
 from itertools import islice
@@ -15,11 +16,14 @@ from pathlib import Path
 from typing import Any, Callable, Iterable, TextIO
 from collections.abc import KeysView
 
+import tenacity
+
 
 log = logging.getLogger ( __name__ )
 
 
-class NeoLoaderDefaults:
+# TODO: remove
+class _NeoLoaderDefaults:
 	def __new__(cls, *args, **kwargs):
 		raise TypeError("Can't instantiate a constant container")
 
@@ -91,18 +95,37 @@ class NeoLoaderConfig:
 	This might useful in tests, to change the default config for all properties in one go.
 	"""
 
-	loader_batch_size: int = NeoLoaderDefaults.BATCH_SIZE
+	loader_batch_size: int = 2500
 	"""
 	Neo4j loads one batch of nodes or edges per transaction, and this is the batch size.
 	"""
 	
-	loader_max_concurrency: int = NeoLoaderDefaults.MAX_CONCURRENCY
+	loader_max_concurrency: int = max(1, os.cpu_count() - 1)
 	"""
 	The maximum number of concurrent batch loaders. The loader has this number of 
 	parallel JSON parsers and this number of concurrent batch loading transactions (see the main_loop` 
 	function inside `async_pg_jsonl_neo_loader` for details). It uses the common default of all the 
 	available CPU cores minus one (left to the main thread). You should be fine with this, except, 
 	maybe, in cases like tests or debugging.	
+	"""
+
+	max_transaction_retries: int = 10
+	"""
+	Some DB writes might need to be retried when certain internal errors happen (eg, collisions between 
+	concurrent transactions). To deal with it, we retry failed transactions after a random pause 
+	(see :attr:`max_retry_pause`) and up to this no of times.
+
+	Likely, you're fine with the default in most common cases, we change it in special cases 
+	like tests.
+	"""
+
+	max_retry_pause: timedelta = timedelta ( minutes = 2 )
+	"""
+	The max pause between transaction retries, see :attr:`max_transaction_retries`.
+	The pause between retries is between a minimum of 2s and this maximum.
+
+	Again, you should be fine with the default, unless you're banging you hea... 
+	doing special things like tests.
 	"""
 
 	def get_property_config ( self, property_id: str ) -> NeoLoaderPropertyConfig:
@@ -117,8 +140,8 @@ class NeoLoaderConfig:
 async def async_pg_jsonl_neo_loader (
 	pg_jsonl_source: str|Path|TextIO|Iterable[Any]|None,
 	neo_driver: neo4j.AsyncDriver,
-	do_nodes = NeoLoaderDefaults.DO_NODES,
-	do_edges = NeoLoaderDefaults.DO_EDGES,
+	do_nodes = True,
+	do_edges = True,
 	config: NeoLoaderConfig = NeoLoaderConfig(),
 	done_base_path: str|Path|None = None
 ) -> int:
@@ -313,6 +336,18 @@ async def async_pg_jsonl_neo_loader (
 		return len ( nodes_batch )
 
 
+	# It's known that async/parallel edge creations cause transaction collisions, 
+	# so, we added this retry thing.
+	@tenacity.retry ( 
+		stop = tenacity.stop_after_attempt ( config.max_transaction_retries ),
+		# Wait a random time of 2s - max time between retries
+		wait = tenacity.wait_random ( min = timedelta ( seconds = 2 ), max = config.max_retry_pause ),
+		reraise = neo4j.exceptions.TransientError,
+		before_sleep = lambda retry_state: log.warning ( 
+			f"pg_jsonl_neo_loader(), edge batch loading failed due to: {retry_state.outcome.exception()}, " + 
+			f"attempting {config.max_transaction_retries - retry_state.attempt_number} more time(s)"
+		)
+	)
 	async def edges_load ( edges_batch: list[dict[str, Any]] ) -> int:
 		"""
 		The batch loader for edges.
@@ -358,7 +393,7 @@ async def async_pg_jsonl_neo_loader (
 	# Some consistency check
 	source_has_seek = hasattr ( pg_jsonl_source, "seek" ) and callable ( pg_jsonl_source.seek )
 	if do_edges and do_nodes:
-		if not ( isinstance ( pg_jsonl_source, (str, Path) ) or source_has_seek ):
+		if not ( isinstance ( pg_jsonl_source, (str, Path, Iterable) ) or source_has_seek ):
 			raise ValueError (
 				f"pg_jsonl_neo_loader(), attempt to load both nodes and edges with a non-rewindable source."
 				+ " Pass me a string, a path or a rewindable file-like object."
@@ -396,11 +431,19 @@ async def async_pg_jsonl_neo_loader (
 		log.info ( f"|== Loading Edges" )
 
 		# Rewind as needed
-		if do_nodes and source_has_seek:
-			try:
-				pg_jsonl_source.seek ( 0 )
-			except IOError as ex:
-				raise IOError ( f"pg_jsonl_neo_loader(), failed to rewind the source for edge loading: {ex}", cause = ex )
+		if do_nodes:
+			if isinstance ( pg_jsonl_source, Iterable ) and not isinstance ( pg_jsonl_source, (str, Path) ):
+				try:
+					# This is mainly to cover lists passed by tests, an iterable can be restarted by getting its
+					# iterator.
+					pg_jsonl_source = iter ( pg_jsonl_source )
+				except Exception as ex:
+					raise ValueError ( f"pg_jsonl_neo_loader(), failed to get an iterator from the source for edge loading: {ex}", cause = ex )
+			elif source_has_seek:
+				try:
+					pg_jsonl_source.seek ( 0 )
+				except IOError as ex:
+					raise IOError ( f"pg_jsonl_neo_loader(), failed to rewind the source for edge loading: {ex}", cause = ex )
 
 		# Restart the progress logger from 0 edges and with a new message
 		progress_logger.reset ()
@@ -419,8 +462,8 @@ async def async_pg_jsonl_neo_loader (
 def pg_jsonl_neo_loader (
 	pg_jsonl_source: str|Path|TextIO|Iterable[Any]|None,
 	neo_driver: neo4j.AsyncDriver,
-	do_nodes = NeoLoaderDefaults.DO_NODES,
-	do_edges = NeoLoaderDefaults.DO_EDGES,
+	do_nodes = True,
+	do_edges = True,
 	config: NeoLoaderConfig = NeoLoaderConfig(),
 	done_base_path: str|Path|None = None
 ) -> int:

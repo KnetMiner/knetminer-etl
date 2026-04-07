@@ -1,4 +1,5 @@
 
+from datetime import timedelta
 import json
 import logging
 from pathlib import Path
@@ -12,7 +13,7 @@ from ketl.io.neoloader import NeoLoaderConfig, NeoLoaderPropertyConfig, pg_jsonl
 
 from testcontainers.neo4j import Neo4jContainer
 
-from typing import Generator, Iterable
+from typing import Any, Generator, Iterable
 
 
 log = logging.getLogger ( __name__ )
@@ -213,7 +214,7 @@ def test_multi_value_mode_single ( pg_data: tuple[ list[ dict ], list[ dict ] ],
 	property_ids = [ "source", "hasChromosomeBegin", "hasChromosomeEnd" ]	
 
 	pg_nodes = pg_data[ 0 ]
-	pg_nodes_str = "\n".join ( json.dumps ( node ) for node in pg_nodes )
+	pg_nodes_str = [ json.dumps ( node ) for node in pg_nodes ]
 
 	async_neo_driver: neo4j.AsyncDriver = create_async_neo_driver ( neo4j_container )
 
@@ -423,7 +424,11 @@ def test_null_properties_ignored ( pg_data: tuple[ list[ dict ], list[ dict ] ],
 
 
 @pytest.mark.integration
-@pytest.mark.parametrize ( "is_nodes_only", [ True, False ] )
+@pytest.mark.parametrize ( 
+	ids = [ "nodes only", "all pg" ],	
+	argnames = "is_nodes_only", 
+	argvalues = [ True, False ]
+)
 def test_done_file_creation ( 
 	pg_data: tuple[ list[ dict ], list[ dict ] ], 
 	neo4j_container: Neo4jContainer,
@@ -436,13 +441,13 @@ def test_done_file_creation (
 
 	pg_nodes, pg_edges = pg_data
 	pg_all = pg_nodes if is_nodes_only else pg_nodes + pg_edges
-	pg_all_str = "\n".join ( json.dumps ( elem ) for elem in pg_all )
+	pg_all = [ json.dumps ( elem ) for elem in pg_all ]
 
 	async_neo_driver: neo4j.AsyncDriver = create_async_neo_driver ( neo4j_container )
 
 	done_file_base_path = tmp_path / "done-flag-test"
 	n_elements = pg_jsonl_neo_loader (
-		pg_jsonl_source = pg_all_str,
+		pg_jsonl_source = pg_all,
 		neo_driver = async_neo_driver,
 		do_nodes = True, do_edges = not is_nodes_only,
 		done_base_path = done_file_base_path
@@ -460,6 +465,125 @@ def test_done_file_creation (
 		assert_that ( str(done_edges_path), "Done file for edges is created" ).exists ()
 
 
+@pytest.mark.integration
+@pytest.mark.parametrize ( 
+	ids = [ "eventual success", "no success" ],
+	argnames = "do_fail", 
+	argvalues = [ False, True ] 
+)
+def test_retry_edge_collisions ( 
+	pg_data: tuple[ list[ dict ], list[ dict ] ],
+	neo4j_container: Neo4jContainer,
+	do_fail: bool
+):
+	"""
+	Tests that the edge loader retries those transactions that fail because they collide with 
+	other concurrent transactions.
+
+	This is a common issue with Neo4j (and transactional systems in general), so we added some logic
+	to deal with it.
+	"""
+
+	class MockNeoDriver ( neo4j.AsyncDriver ):
+		"""
+		A mock driver that simulates the raising of exceptions during a write transaction and up to 
+		a given number of attempts.
+
+		A session's write in this driver fails for n_attempts - 1 and then, if do_fail
+		isn't set, it succeeds at the last attempt, else it eventually fails and raises
+		an exception that is propagated to the invoker.
+
+		Note that this **is not** designed to work with multiple sessions, only in the test case
+		below, which has a small set of edges and can save them with a single session. That's 
+		because doing it otherwise would be more complex and we don't think we need to test that
+		here.
+		"""
+
+		class MockSession ( neo4j.AsyncSession ):
+			"""
+			The mock session to realise the functionality of :class:`MockNeoDriver`. 
+			"""
+			def __init__ ( self, real_session: neo4j.AsyncSession, parent_driver: "MockNeoDriver" ):
+				self.real_session = real_session
+				self.parent_driver = parent_driver
+			
+			async def execute_write(self, tx_fun, *args, **kwargs):
+				self.parent_driver.remaining_attempts -= 1
+				if self.parent_driver.remaining_attempts > 0 or do_fail:
+					raise neo4j.exceptions.TransientError ( "Simulated transaction collision" )		
+				return await self.real_session.execute_write ( tx_fun, *args, **kwargs )
+
+			async def __aenter__ ( self ):
+				await self.real_session.__aenter__ ()
+				return self
+			
+			async def __aexit__ ( self, exc_type, exc_val, exc_tb ):
+				return await self.real_session.__aexit__ ( exc_type, exc_val, exc_tb )
+			
+			def __getattr__ ( self, name ):
+				return getattr ( self.real_session, name )
+
+		
+		def __init__ ( self, real_driver: neo4j.AsyncDriver, n_attempts: int ):
+			self.real_driver = real_driver
+			self.remaining_attempts = n_attempts
+		
+		def session ( self, **config: Any ) -> neo4j.AsyncSession:
+			self.is_retry_done = True
+			return self.MockSession ( self.real_driver.session ( **config ), self )
+
+  ### The test 
+	# 
+
+	pg_nodes, pg_edges = pg_data
+	pg_nodes_str = [ json.dumps ( node ) for node in pg_nodes ]
+	pg_edges_str = [ json.dumps ( edge ) for edge in pg_edges ]
+
+	# Nodes go with the regular driver
+	async_neo_driver: neo4j.AsyncDriver = create_async_neo_driver ( neo4j_container )
+	pg_jsonl_neo_loader (
+		pg_jsonl_source = pg_nodes_str,
+		neo_driver = async_neo_driver,
+		do_nodes = True, do_edges = False
+	)
+
+	# Then the edges with the mock driver
+	mock_driver = MockNeoDriver ( create_async_neo_driver ( neo4j_container ), n_attempts = 2 )
+
+	# Defaults retry params are too time-consuming
+	config = NeoLoaderConfig ( 
+		max_transaction_retries = 3, max_retry_pause = timedelta ( seconds = 3 )
+	)
+
+
+	# If do_fail, expect an exception up here
+	if do_fail:
+		assert_that ( 
+			pg_jsonl_neo_loader,
+			"Loader fails after too many edge transaction collisions" 
+		).raises ( neo4j.exceptions.TransientError )\
+		.when_called_with (
+			pg_jsonl_source = pg_edges_str,
+			neo_driver = mock_driver,
+			do_nodes = False, do_edges = True,
+			config = config
+		).matches ( "Simulated transaction collision" )
+		return
+
+  # Else, it must succeed as usually
+	n_edges = pg_jsonl_neo_loader (
+		pg_jsonl_source = pg_edges_str,
+		neo_driver = mock_driver,
+		do_nodes = False, do_edges = True,
+		config = config
+	)
+	assert_that ( n_edges, "Return value from the loader is correct" ).is_equal_to ( len ( pg_edges ) )
+
+	# And it must have consumed the available attempts
+	assert_that ( mock_driver.remaining_attempts, "Mock driver has consumed the expected number of attempts" ).is_equal_to ( 0 )
+
+
+
 @pytest.fixture ()
 def pg_data ( request ) -> tuple[ list[ dict ], list[ dict ] ]:
 	"""
@@ -467,6 +591,9 @@ def pg_data ( request ) -> tuple[ list[ dict ], list[ dict ] ]:
 	This is used in multiple tests (eg, node loading, edge loading).
 
 	Prefixes all the IDs with the test function, to avoid conflicts between data created by different tests.
+
+	You'll see that some tests pass array of tuples straight to the loader, while others convert them
+	to strings first. This is to ensure both formats are supported.
 	"""
 
 	def make_id ( elem_id: str ) -> str:
