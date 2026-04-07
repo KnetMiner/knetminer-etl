@@ -30,7 +30,7 @@ class TestRowValueMapper:
 	@pytest.mark.parametrize ( 
 		argnames = "prefix",
 		argvalues = [ None, "test:" ],
-		ids = [ "regular", "with-prefix" ]
+		ids = [ "regular", "with prefix" ]
 	)
 	def test_for_edge_id ( self, prefix ):
 		relation_type = "encodes-protein"
@@ -53,7 +53,7 @@ class TestRowValueMapper:
 	@pytest.mark.parametrize ( 
 		argnames = "prefix",
 		argvalues = [ None, "test:" ],
-		ids = [ "regular", "with-prefix" ]
+		ids = [ "regular", "with prefix" ]
 	)
 	def test_for_edge_id_auto ( self, prefix ):
 		relation_type = "encodes-protein"

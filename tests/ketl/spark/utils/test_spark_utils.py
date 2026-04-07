@@ -49,7 +49,7 @@ def test_saving_n_loading_df ( spark_session: SparkSession ):
 
 
 @pytest.mark.parametrize (
-	ids = [ "basic", "not_check_path", "empty", "none" ],
+	ids = [ "basic", "not check path", "empty", "none" ],
 	argnames = "test_path, expected_path",
 	argvalues = [
 		( "/tmp/some_intermediate.parquet/_SUCCESS", "/tmp/some_intermediate.parquet" ),

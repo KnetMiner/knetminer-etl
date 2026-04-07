@@ -138,7 +138,7 @@ def df_path ( df_path: str ) -> str:
 	"""
 	if not df_path: return df_path
 	if not df_path.endswith ( "/_SUCCESS" ): return df_path
-	return df_path [ :-len ( "/_SUCCESS" ) ]
+	return df_path [ : -len ( "/_SUCCESS" ) ]
 
 
 def df_rough_size ( df: DataFrame, sample_ratio: float = 0.1 ) -> int:
