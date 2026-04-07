@@ -6,7 +6,7 @@
 * [X] isort and other code quality tools
 
 ## NeoLoader
-* [ ] More logs
+* [X] More logs
 * [X] Edges
 * [ ] Actual batching (and performance)
 * [X] Singleton->single values, not lists
@@ -19,4 +19,4 @@
 * [ ] Loading in Snake workflow
 * [X] Get rid of neo warnings
 * [ ] Neo retries (in edge creation)
-* [ ] done flag (for Snakemake)
+* [X] done flag (for Snakemake)

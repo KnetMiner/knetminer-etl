@@ -143,7 +143,12 @@ def test_edges_loading (
 def test_loading_from_file ( 
 	pg_data: tuple[ list[ dict ], list[ dict ] ], 
 	tmp_path: Path,
-	neo4j_container: Neo4jContainer, neo_driver: neo4j.Driver ):
+	neo4j_container: Neo4jContainer, neo_driver: neo4j.Driver
+):
+	"""
+	Tests loading from a file (the other tests uses in-memory data).
+	"""
+
 	pg_nodes, pg_edges = pg_data
 	pg_nodes_str = "\n".join ( json.dumps ( node ) for node in pg_nodes )
 	pg_edges_str = "\n".join ( json.dumps ( edge ) for edge in pg_edges )
@@ -415,6 +420,45 @@ def test_null_properties_ignored ( pg_data: tuple[ list[ dict ], list[ dict ] ],
 				else:
 					assert_that ( set ( db_val ), f"Element {id} has a list value for property '{prop_key}' in the database" )\
 						.is_equal_to ( set ( prop_values ) )
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize ( "is_nodes_only", [ True, False ] )
+def test_done_file_creation ( 
+	pg_data: tuple[ list[ dict ], list[ dict ] ], 
+	neo4j_container: Neo4jContainer,
+	tmp_path: Path,
+	is_nodes_only: bool
+):
+	"""
+	Tests the `done_base_path` parameter to create a done flag file.
+	"""
+
+	pg_nodes, pg_edges = pg_data
+	pg_all = pg_nodes if is_nodes_only else pg_nodes + pg_edges
+	pg_all_str = "\n".join ( json.dumps ( elem ) for elem in pg_all )
+
+	async_neo_driver: neo4j.AsyncDriver = create_async_neo_driver ( neo4j_container )
+
+	done_file_base_path = tmp_path / "done-flag-test"
+	n_elements = pg_jsonl_neo_loader (
+		pg_jsonl_source = pg_all_str,
+		neo_driver = async_neo_driver,
+		do_nodes = True, do_edges = not is_nodes_only,
+		done_base_path = done_file_base_path
+	)
+
+	assert_that ( n_elements, "Return value from the loader is correct" ).is_equal_to ( len ( pg_all ) )
+
+	done_file_base_path = Path ( done_file_base_path )
+	done_nodes_path = done_file_base_path.with_name ( done_file_base_path.name + ".nodes" )
+	# assertpy wants a string here (https://github.com/assertpy/assertpy/issues/157)
+	assert_that ( str(done_nodes_path), "Done file for nodes is created" ).exists ()
+
+	if not is_nodes_only:
+		done_edges_path = done_file_base_path.with_name ( done_file_base_path.name + ".edges" )
+		assert_that ( str(done_edges_path), "Done file for edges is created" ).exists ()
+
 
 @pytest.fixture ()
 def pg_data ( request ) -> tuple[ list[ dict ], list[ dict ] ]:

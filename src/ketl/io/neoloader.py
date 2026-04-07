@@ -119,7 +119,8 @@ async def async_pg_jsonl_neo_loader (
 	neo_driver: neo4j.AsyncDriver,
 	do_nodes = NeoLoaderDefaults.DO_NODES,
 	do_edges = NeoLoaderDefaults.DO_EDGES,
-	config: NeoLoaderConfig = NeoLoaderConfig()
+	config: NeoLoaderConfig = NeoLoaderConfig(),
+	done_base_path: str|Path|None = None
 ) -> int:
 	"""
 	Loads a JSONL/PG file (see :func:`ketl.pg_df_2_pg_jsonl`) into a Neo4j database, through the provided driver.
@@ -158,6 +159,11 @@ async def async_pg_jsonl_neo_loader (
 	pipeline. **WARNING**: you **can't** load edges that refer to nodes not loaded in the database, see above.
 
 	- config: the configuration object for the NeoLoader, containing settings like batch size and maximum concurrency.
+
+	- done_base_path: if not None, the base path for the "done" files to be created when the loading is done.
+	This is useful in SnakeMake pipelines, to tell a rule that the loading is done. When nodes loading is completed,
+	`{base_path}.nodes` is created and `{base_path}.edges is created when the edges are loaded, which means
+	you can continue a previous loading from the edges only. Being flag files, their content is irrelevant.
 
 
 	## Returns
@@ -262,7 +268,6 @@ async def async_pg_jsonl_neo_loader (
 			log.debug ( f"line is {line}" )
 			return line and re.search ( type_re, line )
 
-		log.warning (f"Before islice, closed: {getattr(pg_elems_source, 'closed', 'N/A')}")
 		pg_elems_source = ( line for line in pg_elems_source if line and re.search ( type_re, line ) )
 
 		# TODO: remove me 
@@ -281,6 +286,7 @@ async def async_pg_jsonl_neo_loader (
 			n_loaded += await batch_loader ( pg_elems )
 			progress_logger.update ( n_loaded )
 
+		write_done_file ( is_nodes_mode )
 		return n_loaded
 
 
@@ -329,6 +335,25 @@ async def async_pg_jsonl_neo_loader (
 		async with neo_driver.session() as session:
 			await session.execute_write ( lambda tx: tx.run ( query, edges = edges_batch ) )
 		return len ( edges_batch )
+
+
+	def write_done_file ( is_nodes_mode: bool ) -> None:
+		"""
+		Manages the `done_base_path` option, as described in the docstring above.
+		"""
+		if done_base_path is None: return
+
+		done_path = Path ( done_base_path )
+		done_suffix = "nodes" if is_nodes_mode else "edges"
+		done_path = done_path.with_name ( done_path.name + "." + done_suffix )
+		try:
+			done_path.touch ( exist_ok = True )
+		except IOError as ex:
+			raise IOError ( f"pg_jsonl_neo_loader(), failed to create the done file '{done_path}': {ex}", cause = ex )
+
+
+	#### The top-level orchestrator
+	#
 
 	# Some consistency check
 	source_has_seek = hasattr ( pg_jsonl_source, "seek" ) and callable ( pg_jsonl_source.seek )
@@ -396,7 +421,8 @@ def pg_jsonl_neo_loader (
 	neo_driver: neo4j.AsyncDriver,
 	do_nodes = NeoLoaderDefaults.DO_NODES,
 	do_edges = NeoLoaderDefaults.DO_EDGES,
-	config: NeoLoaderConfig = NeoLoaderConfig()
+	config: NeoLoaderConfig = NeoLoaderConfig(),
+	done_base_path: str|Path|None = None
 ) -> int:
 	"""
 	Loads a JSONL/PG file (see :func:`ketl.pg_df_2_pg_jsonl`) into a Neo4j database, through the provided driver.
@@ -409,5 +435,5 @@ def pg_jsonl_neo_loader (
 	stumble upon errors. In that case, use :func:`ketl.async_pg_jsonl_neo_loader` instead.
 	"""
 	return asyncio.run ( async_pg_jsonl_neo_loader (
-		pg_jsonl_source, neo_driver, do_nodes, do_edges, config
+		pg_jsonl_source, neo_driver, do_nodes, do_edges, config, done_base_path
 	))
