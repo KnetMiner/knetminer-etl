@@ -1,14 +1,13 @@
 import json
 import logging
 import pprint
-import sys
+
 import pytest
 from assertpy import assert_that
 from pyspark.sql import SparkSession
 
 from ketl.core import GraphTriple, PGElementType
 from ketl.io.core import pg_df_2_pg_jsonl, triples_2_pg_df
-
 
 log = logging.getLogger ( __name__ )
 

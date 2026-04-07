@@ -1,23 +1,21 @@
 import asyncio
 import concurrent
+import json
+import logging
+import os
+import re
+from collections.abc import KeysView
 from dataclasses import dataclass, field
 from datetime import timedelta
 from enum import StrEnum
-import json
 from itertools import islice
-import logging
-import os
-
-import neo4j
-from brandizpyes.io import async_reader_helper
-from brandizpyes.logging import ProgressLogger
-import re
 from pathlib import Path
 from typing import Any, Callable, Iterable, TextIO
-from collections.abc import KeysView
 
+import neo4j
 import tenacity
-
+from brandizpyes.io import async_reader_helper
+from brandizpyes.logging import ProgressLogger
 
 log = logging.getLogger ( __name__ )
 

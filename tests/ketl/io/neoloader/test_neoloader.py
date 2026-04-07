@@ -1,20 +1,18 @@
 
-from datetime import timedelta
 import json
 import logging
-from pathlib import Path
 import random
+from datetime import timedelta
+from pathlib import Path
+from typing import Any, Generator, Iterable
 
 import neo4j
 import pytest
-
 from assertpy import assert_that
-from ketl.io.neoloader import NeoLoaderConfig, NeoLoaderPropertyConfig, pg_jsonl_neo_loader
-
 from testcontainers.neo4j import Neo4jContainer
 
-from typing import Any, Generator, Iterable
-
+from ketl.io.neoloader import (NeoLoaderConfig, NeoLoaderPropertyConfig,
+                               pg_jsonl_neo_loader)
 
 log = logging.getLogger ( __name__ )
 

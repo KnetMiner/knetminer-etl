@@ -6,11 +6,12 @@ from assertpy import assert_that
 from pyspark.sql import DataFrame
 from pyspark.sql.types import IntegerType, StringType
 
-from ketl.core import ConstantPropertyMapper, GraphTriple, IdentityValueConverter
+from ketl.core import (ConstantPropertyMapper, GraphTriple,
+                       IdentityValueConverter)
 from ketl.spark.utils import assertDataFrameEqualX
 from ketl.tabmap.core import (ColumnMapper, ColumnValueMapper, IdColumnMapper,
-                         RowTripleMapperMixin, RowValueMapper,
-                         SparkDataFrameMapper, TabFileMapper)
+                              RowTripleMapperMixin, RowValueMapper,
+                              SparkDataFrameMapper, TabFileMapper)
 
 log = logging.getLogger ( __name__ )
 

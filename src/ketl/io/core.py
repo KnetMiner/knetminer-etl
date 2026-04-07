@@ -7,10 +7,8 @@ from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql import functions as F
 
 from ketl.core import (GraphProperty, JSONBasedValueConverter, PGElementType,
-                  ValueConverter)
+                       ValueConverter)
 from ketl.spark.utils import df_load, df_save
-
-
 
 log = logging.getLogger ( __name__ )
 
