@@ -32,7 +32,7 @@ formatters:
     
     # A way to give the FQN.
     #class: !!python/name:logging.Formatter
-    format: '%(asctime)s [%(levelname)-7s] [%(name)-10s] [%(threadName)-8s] %(message)s'
+    format: '%(asctime)s [%(levelname)-7s] [%(name)s:%(lineno)d] [%(threadName)8s] %(message)s'
     datefmt: '%Y-%m-%d %H:%M:%S'
 
 
