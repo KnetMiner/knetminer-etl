@@ -4,6 +4,7 @@
 * [ ] Factorise the root module?
 * [X] CI
 * [X] isort and other code quality tools
+* [ ] Some more module renaming, eg, test_ketl -> test_core
 
 ## NeoLoader
 * [X] More logs
@@ -15,8 +16,10 @@
 * [X] Nullable properties
 * [X] Multiple labels
 * [X] Move from io to its own module
-* [ ] Add CLI wrapper
+* [X] Add CLI wrapper
+	* [ ] Add a Bash wrapper?
 * [ ] Loading in Snake workflow
+* [X] Configuration
 * [X] Get rid of neo warnings
 * [X] Neo retries (in edge creation)
 * [X] done flag (for Snakemake)
