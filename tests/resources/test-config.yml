@@ -1,0 +1,26 @@
+# TODO: better documentation.
+neoloader:
+  # This is a mirror of ketl.io.neoloader.NeoLoaderConfig and related classes, see there 
+  # for details
+  default_property_config:
+    multi_value_mode: multiple
+  property_configs:
+    has_pvalue:
+      multi_value_mode: single
+  # As said in NeoLoaderConfig, here be the lions. In production configs, these will likely
+  # be completely omitted and left to the defaults.
+  loader_batch_size: 3000      
+  loader_max_concurrency: 8
+  max_transaction_retries: 3
+  max_retry_pause:
+    seconds: 10
+    minutes: 0
+
+neo4j:
+  # This is almost 1-1 with the .driver() factory method.
+  uri: bolt://neo.somewhere.net:7687
+  auth:
+    user: neo4j
+    password: ${NEO4J_PASSWORD}
+  # You can place anything that the driver() method accepts
+  connection_timeout: 15
