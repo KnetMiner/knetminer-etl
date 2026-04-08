@@ -1,6 +1,7 @@
 
 import json
 import logging
+import os
 import random
 from datetime import timedelta
 from pathlib import Path
@@ -12,7 +13,7 @@ from assertpy import assert_that
 from testcontainers.neo4j import Neo4jContainer
 
 from ketl.io.neoloader import (NeoLoaderConfig, NeoLoaderPropertyConfig,
-                               pg_jsonl_neo_loader)
+                               pg_jsonl_neo_loader, pg_jsonl_neo_loader_cli)
 
 log = logging.getLogger ( __name__ )
 
@@ -581,6 +582,87 @@ def test_retry_edge_collisions (
 	assert_that ( mock_driver.remaining_attempts, "Mock driver has consumed the expected number of attempts" ).is_equal_to ( 0 )
 
 
+@pytest.mark.integration
+@pytest.mark.parametrize (
+	argnames = "test_case",
+	argvalues = [ "all-pg", "no-edges", "error" ]
+)
+def test_loader_cli ( 
+	pg_data: tuple[ list[ dict ], list[ dict ] ], 
+	neo4j_container: Neo4jContainer,
+	neo_driver: neo4j.Driver,
+	tmp_path: Path,
+	test_case: str
+):
+	"""
+	Tests the CLI of the loader, which is a common entry point for its usage.
+	"""
+
+	# First, send the test data to a file. TODO: test stdin, it's supported as well
+	pg_nodes, pg_edges = pg_data
+	pg_nodes_str = "\n".join ( json.dumps ( node ) for node in pg_nodes )
+	pg_edges_str = "\n".join ( json.dumps ( edge ) for edge in pg_edges )
+	pg_all_str = pg_nodes_str + "\n" + pg_edges_str
+
+	tmp_input_path = tmp_path / "neo-loader-test-pg.jsonl"
+
+	if test_case == "error":
+		tmp_input_path.write_text ( "'type': 'node', Good luck with parsing me\n" )
+	else:
+		tmp_input_path.write_text ( pg_all_str )
+
+	done_file_base_path = tmp_path / "cli-done-flag-test"
+
+	cfg_path = 	Path ( os.path.dirname ( __file__ ) + "/../../../resources/test-config.yml" )\
+		.absolute ()
+
+
+	# And now, the real thing
+	args = [
+		"--neo-uri", neo4j_container.get_connection_url(),
+		"--neo-user", neo4j_container.username,
+		"--neo-password", neo4j_container.password,
+		"--done-path", str ( done_file_base_path ),
+		"--config", str ( cfg_path ),
+	]
+	if test_case == "no-edges":
+		args.append ( "--no-edges" )
+
+	args.append ( str ( tmp_input_path ) )
+
+	exit_status = pg_jsonl_neo_loader_cli (
+		args = args,
+		exit_on_error = False # Doesn't do a system exit, we need it for obvious reasons
+	)
+
+	if test_case == "error":
+		assert_that ( exit_status, "CLI exits with error status" ).is_not_equal_to ( 0 )
+		return
+
+	assert_that ( exit_status, "CLI exits with success status" ).is_equal_to ( 0 )
+
+	# Verify the no of nodes
+	node_ids = [ node[ "id" ] for node in pg_nodes ]
+	edge_ids = [ edge[ "id" ] for edge in pg_edges ]
+
+	with neo_driver.session() as session:
+		result = session.run ( f"MATCH (n) WHERE n.id IN {node_ids} RETURN count(n) AS count" )
+		count = result.single() [ "count" ]
+		assert_that ( count, "CLI loaded the nodes as expected" ).is_equal_to ( len ( pg_nodes ) )
+
+		(expected_edge_count, assert_descr) = (0, "--no-edges worked") if test_case == "no-edges" \
+		else (len ( pg_edges ), "CLI loaded the edges as expected")
+		result = session.run ( f"MATCH ()-[r]->() WHERE r.id IN {edge_ids} RETURN count(r) AS count" )
+		count = result.single() [ "count" ]
+		assert_that ( count, assert_descr ).is_equal_to ( expected_edge_count )
+
+	# And the done file
+	done_suffixes = [ "nodes" ]
+	if test_case != "no-edges": done_suffixes.append ( "edges" )
+	for suffix in done_suffixes:
+		done_file_path = str ( done_file_base_path ) + f".{suffix}"
+		assert_that ( done_file_path, f"Done file for {suffix} is created" ).exists ()
+	
 
 @pytest.fixture ()
 def pg_data ( request ) -> tuple[ list[ dict ], list[ dict ] ]:

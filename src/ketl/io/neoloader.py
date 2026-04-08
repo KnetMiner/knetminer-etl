@@ -1,7 +1,9 @@
 import asyncio
 import concurrent
+from html import parser
 import json
 import logging
+from logging import config
 import os
 import re
 from collections.abc import KeysView
@@ -10,12 +12,17 @@ from datetime import timedelta
 from enum import StrEnum
 from itertools import islice
 from pathlib import Path
-from typing import Any, Callable, Iterable, TextIO
+import sys
+from typing import Any, Awaitable, Callable, Iterable, TextIO
 
 import neo4j
 import tenacity
 from brandizpyes.io import async_reader_helper
 from brandizpyes.logging import ProgressLogger
+
+import argparse
+
+from ketl.config import load_config
 
 log = logging.getLogger ( __name__ )
 
@@ -76,6 +83,28 @@ class NeoLoaderPropertyConfig:
 		"""
 
 	multi_value_mode: MultiValueMode = MultiValueMode.AUTO
+	@classmethod
+	def from_config ( cls, config: dict ) -> "NeoLoaderPropertyConfig":
+		"""
+		Instantiates a new config from a configuration dictionary, in the format shown 
+		in `/tests/resources/test-config.yml`
+
+		Example:
+		```yaml
+		default_property_config:
+			multi_value_mode: multiple
+		```
+
+		Note that this should receive only the object describing a property, **not** the outer key/value
+		pair.
+		"""
+		if not config: return cls()
+		params = config.copy ()
+
+		if "multi_value_mode" in params:
+			params [ "multi_value_mode" ] = cls.MultiValueMode ( params [ "multi_value_mode" ] )
+
+		return cls ( **params )
 
 @dataclass
 class NeoLoaderConfig:
@@ -133,6 +162,51 @@ class NeoLoaderConfig:
 	
 	def get_property_ids ( self ) -> KeysView[str]:
 		return self.property_configs.keys()
+	
+	@classmethod
+	def from_config ( cls, config: dict ) -> "NeoLoaderConfig":
+		"""
+		Instantiates a new config from a configuration dictionary, in the format shown 
+		in `/tests/resources/test-config.yml`
+
+		Example:
+		```yaml
+		neoloader:
+			default_property_config:
+				multi_value_mode: multiple
+			property_configs:
+				has_pvalue:
+					multi_value_mode: single
+			loader_batch_size: 3000      
+			loader_max_concurrency: 8
+			max_transaction_retries: 3
+			max_retry_pause:
+				seconds: 10
+				minutes: 0
+		```
+
+		Note that this should receive the contents of the `neoloader` key, **not** the whole
+		configuration object.
+		"""
+
+		if not config: return cls()
+		params = config.copy ()
+
+		# Let's convert the keys that can't be given as-is to the constructor
+		if "default_property_config" in params:
+			params [ "default_property_config" ] = NeoLoaderPropertyConfig.from_config ( params [ "default_property_config" ] )
+		if "property_configs" in params:
+			params [ "property_configs" ] = { 
+				prop_id: NeoLoaderPropertyConfig.from_config ( prop_config ) 
+				for prop_id, prop_config in params [ "property_configs" ].items ()
+			}
+		if "max_retry_pause" in params:
+			max_retry_pause = params [ "max_retry_pause" ]
+			try:
+				params [ "max_retry_pause" ] = timedelta ( **max_retry_pause )
+			except Exception as ex:
+				raise ValueError ( f"Invalid max_retry_pause configuration: {max_retry_pause}" ) from ex
+		return cls ( **params )
 
 
 async def async_pg_jsonl_neo_loader (
@@ -478,3 +552,136 @@ def pg_jsonl_neo_loader (
 	return asyncio.run ( async_pg_jsonl_neo_loader (
 		pg_jsonl_source, neo_driver, do_nodes, do_edges, config, done_base_path
 	))
+
+
+def create_neo_driver_from_config ( config: dict, is_async: bool = False ) -> neo4j.Driver|neo4j.AsyncDriver:
+	"""
+	Instantiates a Neo4j driver from a configuration dictionary, in the format shown 
+	in `/tests/resources/test-config.yml`
+
+	Example:
+
+	```yaml
+	neo4j:
+		uri: bolt://neo.somewhere.net:7687
+		auth:
+			user: neo4j
+			password: ${NEO4J_PASSWORD}
+		connection_timeout: 15
+	```
+
+	Note that this should receive the contents of the `neo4j` key, **not** its container.
+	"""
+	params = config.copy () if config else {
+		"uri": "bolt://localhost:7687",
+		"auth": {
+			"user": "neo4j",
+			"password": "neo4j"
+		}
+	}
+
+	if "auth" in params:
+		params [ "auth" ] = ( params [ "auth" ].get ( "user" ), params [ "auth" ].get ( "password" ) )
+
+	if is_async:
+		return neo4j.AsyncGraphDatabase.driver ( **params )
+	
+	return neo4j.GraphDatabase.driver ( **params )
+
+
+def pg_jsonl_neo_loader_cli ( args: list[str], exit_on_error: bool = True ) -> None:
+	"""
+	A CLI wrapper for the NeoLoader.
+
+	See :func:`ketl.async_pg_jsonl_neo_loader` for details.
+	"""
+
+	async def run_loader_and_close_driver ( loader_call: Awaitable[int], neo_driver: neo4j.AsyncDriver ) -> int:
+		"""
+		Wraps a call to the loader into a try/finally that closes the driver at the end.
+		
+		This isn't needed in most cases, since the CLI exits straight after the loader and the 
+		driver auto-closes. Yet, we added it as a precaution.
+
+		Note that we can't just close an async driver, nor can we await driver.close() in a non 
+		async context, due to the coloured functions rubbish.
+		"""
+		try:
+			return await loader_call ()
+		finally:
+			await neo_driver.close ()
+
+	parser = argparse.ArgumentParser ( 
+		description = "=== The PG-JSONL Neo4j Loader ===", 
+		exit_on_error = exit_on_error, suggest_on_error = True,
+		add_help = False # Cause we need our own handler, see below
+	)
+	parser.add_argument ( "source", help = "Source path of the PG-JSONL data, stdin if none", nargs = "?", metavar = "<path>" )
+	parser.add_argument ( "--neo-uri", "-r", help = "URI of the Neo4j database (overrides value in --config)", metavar = "<URI>" )
+	parser.add_argument ( "--neo-user", "-u", help = "Neo4j user (overrides value in --config)", metavar = "<user>" )
+	parser.add_argument ( "--neo-password", "-p", help = "Neo4j password (overrides value in --config)", metavar = "<password>" )
+	parser.add_argument ( "--no-nodes", "-n", help = "Skip nodes (default: loads them). WARNING: edges MUST refer to existing nodes", action = "store_true" )
+	parser.add_argument ( "--no-edges", "-e", help = "Skip edges (default: loads them).", action = "store_true")
+	parser.add_argument ( "--done-path", "-f", help = "Base path for the flag file indicating nodes/edges were loaded (.nodes/.edges are appended)", metavar = "<base path>" )
+	parser.add_argument ( "--config", "-c", help = "Path to the configuration file, allows for fine-tuning, see examples in /tests/resources", metavar = "<path>" )
+
+	parser.add_argument ('--help', '-h', action = "store_true", help="Shows this help message and exits" )
+
+	parsed_args, unknown = parser.parse_known_args ( args )
+	if parsed_args.help or unknown:
+		parser.print_help ()
+		if exit_on_error: sys.exit ( 2 )
+		else: return 2
+
+	exit_code = 0
+
+	# Get the config
+	config = load_config ( Path ( parsed_args.config ) ) if parsed_args.config \
+	else {} # else use the defaults
+
+	if not "neo4j" in config:
+		config [ "neo4j" ] = {
+			"uri": "bolt://localhost:7687"
+		}
+	if not "auth" in config [ "neo4j" ]:
+		config [ "neo4j" ] [ "auth" ] = {
+			"user": "neo4j",
+			"password": "neo4j"
+		}
+	
+	if parsed_args.neo_uri:
+		config [ "neo4j" ] [ "uri" ] = parsed_args.neo_uri
+	if parsed_args.neo_user:
+		config [ "neo4j" ] [ "auth" ] [ "user" ] = parsed_args.neo_user
+	if parsed_args.neo_password:
+		config [ "neo4j" ] [ "auth" ] [ "password" ] = parsed_args.neo_password
+
+	neo_driver = create_neo_driver_from_config ( config.get ( "neo4j" ), is_async = True )
+	config = NeoLoaderConfig.from_config ( config.get ( "neoloader" ) )
+
+	source = Path ( parsed_args.source ) if parsed_args.source else None
+
+	try:
+		# As said above, we need to wrap this as follow.
+		#
+		loader_call = lambda: async_pg_jsonl_neo_loader (
+			source,
+			neo_driver, 
+			do_edges = not parsed_args.no_edges,
+			do_nodes = not parsed_args.no_nodes,
+			done_base_path = parsed_args.done_path,
+			config = config
+		)
+		asyncio.run ( run_loader_and_close_driver ( loader_call, neo_driver ) )
+	except Exception as ex:
+		exit_code = 1
+		log.error ( f"pg_jsonl_neo_loader_cli(), loading failed: {ex}", exc_info = True )
+	
+	if exit_on_error:
+		sys.exit ( exit_code )
+	else:
+		return exit_code
+
+
+if __name__ == "__main__":
+	pg_jsonl_neo_loader_cli ( sys.argv [ 1: ] )
