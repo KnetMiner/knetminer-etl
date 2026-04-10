@@ -1,9 +1,29 @@
+"""
+# The PG-JSONL Neo4j Loader
+
+This module provides functions to load the JSONL serialisations of the [PG format](https://pg-format.github.io/).
+
+Both an async version (:func:`ketl.async_pg_jsonl_neo_loader`) and a synchronous wrapper 
+(:func:`ketl.pg_jsonl_neo_loader`) are defined, as well as a CLI interface (:func:`ketl.pg_jsonl_neo_loader_cli`).
+
+Other components in the module allows for configuring how node and relationship properties should mapped into
+Neo4j (eg, multiple-value handling), loading tuning-related settings and reading configuration options from 
+YAML files.
+
+TODO: This is worth a standalone project, to be put in its own github repo and made
+independent on ketl (of course, ketl would become a dependendant).
+
+TODO: for future documentaton, see some related work (last update, 20260410):
+- [pg-format-py](https://github.com/pg-format/pg-format-py), very simple, can't work for large inputs.
+- [Parallel Spark Neo4j Loader](https://github.com/neo4j-field/neo4j-parallel-spark-loader), interesting, focuses
+on injesting from Spark DFs. We aim at mapping to PG first and then loading, but TODO: we should test our loader
+with a DF as source.
+"""
+
 import asyncio
 import concurrent
-from html import parser
 import json
 import logging
-from logging import config
 import os
 import re
 from collections.abc import KeysView
@@ -25,17 +45,6 @@ import argparse
 from ketl.config import load_config
 
 log = logging.getLogger ( __name__ )
-
-
-# TODO: remove
-class _NeoLoaderDefaults:
-	def __new__(cls, *args, **kwargs):
-		raise TypeError("Can't instantiate a constant container")
-
-	BATCH_SIZE = 2500
-	MAX_CONCURRENCY = max(1, os.cpu_count() - 1)
-	DO_NODES = True
-	DO_EDGES = True
 
 
 @dataclass ()
@@ -589,11 +598,14 @@ def create_neo_driver_from_config ( config: dict, is_async: bool = False ) -> ne
 	return neo4j.GraphDatabase.driver ( **params )
 
 
-def pg_jsonl_neo_loader_cli ( args: list[str], exit_on_error: bool = True ) -> None:
+def pg_jsonl_neo_loader_cli ( args: list[str], do_sys_exit: bool = True ) -> None:
 	"""
 	A CLI wrapper for the NeoLoader.
 
 	See :func:`ketl.async_pg_jsonl_neo_loader` for details.
+
+	`do_sys_exit` is mostly for testing, when set, the function exits with the appropriate status code, 
+	otherwise, it just returns the status code.
 	"""
 
 	async def run_loader_and_close_driver ( loader_call: Awaitable[int], neo_driver: neo4j.AsyncDriver ) -> int:
@@ -613,10 +625,16 @@ def pg_jsonl_neo_loader_cli ( args: list[str], exit_on_error: bool = True ) -> N
 
 	parser = argparse.ArgumentParser ( 
 		description = "=== The PG-JSONL Neo4j Loader ===", 
-		exit_on_error = exit_on_error, suggest_on_error = True,
+		exit_on_error = do_sys_exit, suggest_on_error = True,
 		add_help = False # Cause we need our own handler, see below
 	)
-	parser.add_argument ( "source", help = "Source path of the PG-JSONL data, stdin if none", nargs = "?", metavar = "<path>" )
+	parser.add_argument (
+		"source", 
+		help = "Source path of the PG-JSONL data. Reads from stdin if null (NOT compatible with loading " 
+		     + "both nodes and edges, requires either --no-nodes or --no-edges).", 
+		nargs = "?",
+		metavar = "<path>" 
+	)
 	parser.add_argument ( "--neo-uri", "-r", help = "URI of the Neo4j database (overrides value in --config)", metavar = "<URI>" )
 	parser.add_argument ( "--neo-user", "-u", help = "Neo4j user (overrides value in --config)", metavar = "<user>" )
 	parser.add_argument ( "--neo-password", "-p", help = "Neo4j password (overrides value in --config)", metavar = "<password>" )
@@ -625,12 +643,12 @@ def pg_jsonl_neo_loader_cli ( args: list[str], exit_on_error: bool = True ) -> N
 	parser.add_argument ( "--done-path", "-f", help = "Base path for the flag file indicating nodes/edges were loaded (.nodes/.edges are appended)", metavar = "<base path>" )
 	parser.add_argument ( "--config", "-c", help = "Path to the configuration file, allows for fine-tuning, see examples in /tests/resources", metavar = "<path>" )
 
-	parser.add_argument ('--help', '-h', action = "store_true", help="Shows this help message and exits" )
+	parser.add_argument ('--help', '-h', action = "store_true", help="Shows this help message and exits (with status 2)" )
 
 	parsed_args, unknown = parser.parse_known_args ( args )
 	if parsed_args.help or unknown:
 		parser.print_help ()
-		if exit_on_error: sys.exit ( 2 )
+		if do_sys_exit: sys.exit ( 2 )
 		else: return 2
 
 	exit_code = 0
@@ -639,6 +657,7 @@ def pg_jsonl_neo_loader_cli ( args: list[str], exit_on_error: bool = True ) -> N
 	config = load_config ( Path ( parsed_args.config ) ) if parsed_args.config \
 	else {} # else use the defaults
 
+  # Neo defaults
 	if not "neo4j" in config:
 		config [ "neo4j" ] = {
 			"uri": "bolt://localhost:7687"
@@ -649,6 +668,7 @@ def pg_jsonl_neo_loader_cli ( args: list[str], exit_on_error: bool = True ) -> N
 			"password": "neo4j"
 		}
 	
+	# These CLI args override the config (ie, the defaults or the loaded file)
 	if parsed_args.neo_uri:
 		config [ "neo4j" ] [ "uri" ] = parsed_args.neo_uri
 	if parsed_args.neo_user:
@@ -657,8 +677,11 @@ def pg_jsonl_neo_loader_cli ( args: list[str], exit_on_error: bool = True ) -> N
 		config [ "neo4j" ] [ "auth" ] [ "password" ] = parsed_args.neo_password
 
 	neo_driver = create_neo_driver_from_config ( config.get ( "neo4j" ), is_async = True )
+	
+	# If not available, it just creates a default object
 	config = NeoLoaderConfig.from_config ( config.get ( "neoloader" ) )
 
+	# If both nodes and edges, the loader will fail, we're delegating the error handling to it
 	source = Path ( parsed_args.source ) if parsed_args.source else None
 
 	try:
@@ -677,11 +700,15 @@ def pg_jsonl_neo_loader_cli ( args: list[str], exit_on_error: bool = True ) -> N
 		exit_code = 1
 		log.error ( f"pg_jsonl_neo_loader_cli(), loading failed: {ex}", exc_info = True )
 	
-	if exit_on_error:
+	if do_sys_exit:
 		sys.exit ( exit_code )
 	else:
 		return exit_code
 
 
 if __name__ == "__main__":
+	# Of course, we call the CLI loader when the module is invoked, so you can do:
+	#
+	#   python -m ketl.io.neoloader ...
+	#
 	pg_jsonl_neo_loader_cli ( sys.argv [ 1: ] )

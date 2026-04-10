@@ -632,7 +632,7 @@ def test_loader_cli (
 
 	exit_status = pg_jsonl_neo_loader_cli (
 		args = args,
-		exit_on_error = False # Doesn't do a system exit, we need it for obvious reasons
+		do_sys_exit = False # Doesn't do a system exit, we need it for obvious reasons
 	)
 
 	if test_case == "error":
