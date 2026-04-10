@@ -595,20 +595,20 @@ def test_loader_cli (
 	test_case: str
 ):
 	"""
-	Tests the CLI of the loader, which is a common entry point for its usage.
+	Tests the CLI wrapper for the Neo Loader.
 	"""
 
 	# First, send the test data to a file. TODO: test stdin, it's supported as well
 	pg_nodes, pg_edges = pg_data
-	pg_nodes_str = "\n".join ( json.dumps ( node ) for node in pg_nodes )
-	pg_edges_str = "\n".join ( json.dumps ( edge ) for edge in pg_edges )
-	pg_all_str = pg_nodes_str + "\n" + pg_edges_str
 
 	tmp_input_path = tmp_path / "neo-loader-test-pg.jsonl"
 
 	if test_case == "error":
 		tmp_input_path.write_text ( "'type': 'node', Good luck with parsing me\n" )
 	else:
+		pg_nodes_str = "\n".join ( json.dumps ( node ) for node in pg_nodes )
+		pg_edges_str = "\n".join ( json.dumps ( edge ) for edge in pg_edges )
+		pg_all_str = pg_nodes_str + "\n" + pg_edges_str
 		tmp_input_path.write_text ( pg_all_str )
 
 	done_file_base_path = tmp_path / "cli-done-flag-test"

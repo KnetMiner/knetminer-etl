@@ -22,6 +22,8 @@ def load_config ( yaml_source: Path|str|TextIO|None, use_unsafe_loader: bool = F
 	This is useful when you want to do things like calling functions in the configuration file.
 	However, it's False by default, since this behaviour is unsafe (see Python documentation).
 	When false, it uses :class:`yaml.FullLoader`, which still allows for some dynamic features.
+
+	TODO: move to brandizpyes (where it could be used for the logger).
 	"""
 
 	loader_cls = yaml.UnsafeLoader if use_unsafe_loader else yaml.FullLoader
