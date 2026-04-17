@@ -585,7 +585,7 @@ def test_retry_edge_collisions (
 @pytest.mark.integration
 @pytest.mark.parametrize (
 	argnames = "test_case",
-	argvalues = [ "all-pg", "no-edges", "error" ]
+	argvalues = [ "all pg", "no-edges", "error" ]
 )
 def test_loader_cli ( 
 	pg_data: tuple[ list[ dict ], list[ dict ] ], 

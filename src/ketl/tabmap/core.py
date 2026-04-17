@@ -426,7 +426,7 @@ class SparkDataFrameMapper:
 		"""
 		@param id_mapper: the :class:`ketl.tabmap.ColumnValueMapper` to build the triple ID.
 		  If it's None, it will use :meth:`ketl.tabmap.RowValueMapper.for_edge_id_auto`.
-			If it's :class:`ketl.tabmap.SparkDataFrameMapper.AutoIdMapper`, it will use auto-edge with
+			If it's :class:`ketl.tabmap.SparkDataFrameMapper.AutoEdgeId`, it will use auto-edge with
 			the given prefix.
 			**WARNING**: these only makes sense for relationship/edge mappers, not for nodes.
 
@@ -441,10 +441,10 @@ class SparkDataFrameMapper:
 		self.row_mappers = row_mappers if row_mappers else []
 		self.const_prop_mappers = const_prop_mappers if const_prop_mappers else []
 
-		if not self.id_mapper or isinstance ( self.id_mapper, SparkDataFrameMapper.AutoEdgeId ):
-			prefix = \
-			  self.id_mapper.prefix if isinstance ( self.id_mapper, SparkDataFrameMapper.AutoEdgeId ) \
-				else None
+		if not self.id_mapper: self.id_mapper = SparkDataFrameMapper.AutoEdgeId ()
+
+		if isinstance ( self.id_mapper, SparkDataFrameMapper.AutoEdgeId ):
+			prefix = self.id_mapper.prefix
 			
 			self.id_mapper = RowValueMapper.for_edge_id_auto (
 				self.const_prop_mappers + self.row_mappers,
