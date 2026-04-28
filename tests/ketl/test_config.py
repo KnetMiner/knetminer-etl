@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+import textwrap
 
 import pytest
 from ketl.config import load_config
@@ -43,6 +44,24 @@ def test_env_var_resolution ( config ):
 		.is_equal_to ( os.getenv ( "NEO4J_PASSWORD" ) )
 
 
+def test_env_var_resolution_fallback ( config ):
+	foo = config["foo"]
+	assert_that ( foo["fallback"], "Fallback value was loaded from environment or default" )\
+		.is_equal_to ( 42 )
+	
+	test_value = 99
+	os.environ["KETL_TEST_FALLBACK"] = str ( test_value )
+	config = \
+	"""
+	foo:
+	  fallback: ${KETL_TEST_FALLBACK:42}
+	"""
+	config = textwrap.dedent ( config )
+	loaded_config = load_config ( config )
+	assert_that ( loaded_config["foo"]["fallback"], "Fallback value was correctly overridden" )\
+		.is_equal_to ( test_value )
+
+
 @pytest.fixture ( scope = "module" )
 def config ():
 	"""
@@ -50,7 +69,12 @@ def config ():
 	"""
 	
 	# Set NEO4J_PASSWORD to later test env resolution
-	os.environ["NEO4J_PASSWORD"] = "testTest"	
+	os.environ["NEO4J_PASSWORD"] = "testTest"
+	
+	# Ensures the test about this works correctly
+	if "KETL_TEST_FALLBACK" in os.environ:
+		del ( os.environ["KETL_TEST_FALLBACK"] )
+
 	yaml_path =  Path ( os.path.dirname ( __file__ ) + "/../resources/test-config.yml" ).absolute ()
 	config = load_config ( yaml_path )
 	return config

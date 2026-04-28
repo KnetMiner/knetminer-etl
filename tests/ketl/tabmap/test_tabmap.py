@@ -465,8 +465,8 @@ class TestTabFileMapper:
 		assert_that ( triples_df.count (), "Number of mapped triples match" )\
 			.is_equal_to ( 
 				8 # total rows in the TSV
-				* ( len ( tb_mapper.data_frame_mapper.row_mappers ) 
-			 			+ len ( tb_mapper.data_frame_mapper.const_prop_mappers ) )
+				* ( len ( tb_mapper.row_mappers ) 
+			 			+ len ( tb_mapper.const_prop_mappers ) )
 			)
 
 		assert_that ( triples_df.columns, "Data frame has the correct columns" )\

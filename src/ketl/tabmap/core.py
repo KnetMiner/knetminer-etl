@@ -529,7 +529,7 @@ class TabFileMapper:
 	def __init__ ( 
 		self,
 
-		id_mapper: IdColumnMapper,
+		id_mapper: RowValueMapper | SparkDataFrameMapper.AutoEdgeId | None,
 		row_mappers: list[ ColumnMapper ] = None,
 		const_prop_mappers: list[ ConstantPropertyMapper ] | None = None,
 
@@ -648,4 +648,26 @@ class TabFileMapper:
 		
 		return triple_df
 	# /map
+
+	@property
+	def id_mapper ( self ) -> IdColumnMapper:
+		"""
+		Convenience property to get the ID mapper from the internal :class:`ketl.tabmap.SparkDataFrameMapper`.
+		"""
+		return self.data_frame_mapper.id_mapper
+	
+
+	@property
+	def row_mappers ( self ) -> list [ ColumnMapper ]:
+		"""
+		Convenience property to get the row mappers from the internal :class:`ketl.tabmap.SparkDataFrameMapper`.
+		"""
+		return self.data_frame_mapper.row_mappers
+	
+	@property
+	def const_prop_mappers ( self ) -> list [ ConstantPropertyMapper ]:
+		"""
+		Convenience property to get the constant property mappers from the internal :class:`ketl.tabmap.SparkDataFrameMapper`.
+		"""
+		return self.data_frame_mapper.const_prop_mappers
 # /TabFileMapper

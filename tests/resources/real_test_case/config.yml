@@ -1,0 +1,45 @@
+# This is read by KETL config utils.
+#
+# Defaults are commented.
+# As explained elsewhere, we don't use this in our example workflow, for we use config.py instead.
+#
+
+# This is almost 1-1 with the SparkSession.builder factory method.
+#
+spark:
+  # master: 'local[*]'
+  appName: test_ketl_snake
+  # getOrCreate: True
+  # config: {}
+
+
+
+# This is almost 1-1 with the .driver() factory method.
+#
+neo4j:
+  # set the invoking test, which in turn, takes it from Test Containers
+  uri: bolt://localhost:${NEO4J_PORT:7687} 
+  auth:
+    user: neo4j
+    password: ${NEO4J_PASSWORD}
+  # You can place anything that the driver() method accepts
+  connection_timeout: 15
+
+
+# This is a mirror of ketl.io.neoloader.NeoLoaderConfig and related classes, see there 
+# for details.
+#
+neoloader:
+  # default_property_config:
+  #   multi_value_mode: multiple
+  property_configs:
+    dataSources:
+      multi_value_mode: multiple
+  # As said in NeoLoaderConfig, here be the lions. In production configs, these will likely
+  # be completely omitted and left to the defaults.
+  # loader_batch_size: 3000      
+  # loader_max_concurrency: 8
+  # max_transaction_retries: 3
+  # max_retry_pause:
+    # seconds: 10
+    # minutes: 0

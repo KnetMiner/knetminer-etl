@@ -5,7 +5,7 @@ import pytest
 from assertpy import assert_that
 from pyspark.sql import SparkSession
 
-from ketl.spark.utils import (df_check_path, df_load, df_path, df_rough_size,
+from ketl.spark.utils import (create_spark_session_from_config, df_check_path, df_load, df_path, df_rough_size,
                               df_save)
 
 log = logging.getLogger ( __name__ )
@@ -165,3 +165,37 @@ def test_checkpoint_manager_repartition (
 		.is_equal_to ( test_tuples )
 	
 # /test_checkpoint_manager_repartition
+
+
+def test_create_spark_session_from_config_basic ():
+	"""
+	Test the creation of a Spark session from a config dictionary.
+	"""
+
+	config = {
+		"master": "local[*]",
+		"appName": "test_spark_session_from_config",
+		"getOrCreate": True,
+		"config": {
+			"inferSchema": False
+		}
+	}
+
+	spark_session = create_spark_session_from_config ( config )
+	assert_that ( spark_session, "Spark session is created" ).is_not_none ()
+	assert_that ( spark_session.sparkContext.master, "Spark session has the right master" )\
+		.is_equal_to ( config["master"] )
+	# Actually, getOrCreate will reuse the session fixture
+	assert_that ( spark_session.sparkContext.appName, "Spark session has the right app name" )\
+		.is_equal_to ( "test_ketl" )
+	
+
+def test_create_spark_session_from_config_defaults ():
+	spark_session = create_spark_session_from_config ()
+	assert_that ( spark_session, "Spark session is created" ).is_not_none ()
+	assert_that ( spark_session.sparkContext.master, "Spark session has the default master" )\
+		.is_equal_to ( "local[*]" )
+	# Same as above
+	assert_that ( spark_session.sparkContext.appName, "Spark session has the default app name" )\
+		.is_equal_to ( "test_ketl" )
+	

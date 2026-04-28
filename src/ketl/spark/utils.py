@@ -233,3 +233,30 @@ def areDataFramesEqual (
 		return True
 	except AssertionError:
 		return False
+
+
+def create_spark_session_from_config ( config: dict[str, any]|None = None ) -> SparkSession:
+	"""
+	Creates a Spark session from a configuration dictionary. See the tests for details
+	on the config dictionary.
+
+	"""
+	if config is None: config = {}
+
+	master = config.get ( "master", "local[*]" )
+	remote = config.get ( "remote", None )
+
+	app_name = config.get ( "appName", "ketl-spark-session")
+	get_or_create = config.get ( "getOrCreate", True )
+	spark_conf = config.get ( "config", {} ) or {}
+
+	builder = SparkSession.builder
+	if master: builder = builder.master( master )
+	if remote: builder = builder.remote ( remote )
+	if app_name: builder = builder.appName ( app_name )
+
+	for k, v in spark_conf.items ():
+		builder = builder.config ( k, v )
+
+	return builder.getOrCreate() if get_or_create else builder.create()
+	

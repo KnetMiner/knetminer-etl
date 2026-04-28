@@ -24,3 +24,8 @@ neo4j:
     password: ${NEO4J_PASSWORD}
   # You can place anything that the driver() method accepts
   connection_timeout: 15
+
+
+# The config loader can get everything, but only documented config sections are actually used.
+foo:
+  fallback: ${KETL_TEST_FALLBACK: 42}
