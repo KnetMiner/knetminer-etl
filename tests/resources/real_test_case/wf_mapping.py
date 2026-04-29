@@ -1,6 +1,6 @@
 
-from ketl.core import ConstantPropertyMapper, GraphTriple
-from ketl.tabmap.core import ColumnMapper, IdColumnMapper, TabFileMapper, SparkDataFrameMapper
+from ketl.core import ConstantPropertyMapper, GraphTriple, IdentityValueConverter
+from ketl.tabmap.core import ColumnMapper, IdColumnMapper, RowTripleMapperMixin, TabFileMapper, SparkDataFrameMapper
 from ketl.io.neoloader import NeoLoaderConfig, NeoLoaderPropertyConfig
 
 
@@ -24,7 +24,7 @@ def make_accession_mappers_for_source (
 	acc_mapper = TabFileMapper (
 		id_mapper = IdColumnMapper.from_extractor ( 
 			extractor = lambda row: f"accession:{source_id}:{row[acc_col_id]}",
-			column_ids = [ acc_col_id ]
+			column_id = acc_col_id
 		),
 		row_mappers = [
 			ColumnMapper ( column_id = acc_col_id, property = "value" ),
@@ -36,14 +36,13 @@ def make_accession_mappers_for_source (
 	)
 
 	rel_mapper = TabFileMapper (
-		id_mapper = SparkDataFrameMapper.AutoEdgeId ( "has-accession" ),
 		const_prop_mappers = [
 			# TODO: check AgriSchemas
-			ConstantPropertyMapper.for_type ( "has-accession" ),
+			ConstantPropertyMapper.for_type ( "hasAccession" ),
 		],
 		row_mappers = [
-			ColumnMapper.from_extractor ( source_id_mapper.value, GraphTriple.FROM_KEY, source_id_mapper.column_ids ),
-			ColumnMapper.from_extractor ( acc_mapper.id_mapper.value, GraphTriple.TO_KEY, acc_mapper.id_mapper.column_ids )
+			RowTripleMapperMixin.for_from ( source_id_mapper ),
+			RowTripleMapperMixin.for_to ( acc_mapper.id_mapper )
 		]
 	)
 
@@ -55,10 +54,7 @@ def make_accession_mappers_for_source (
 E2U_ENSEMBL_GENE_MAPPER = TabFileMapper (
 	# The node ID is usually a prefix + the accession for this type. The prefix is often needed
 	# because the same accessions are used for multiple related types, eg, genes and proteins.
-	id_mapper = IdColumnMapper.from_extractor ( 
-		extractor = lambda row: f"gene:{row['ENSEMBL ID']}",
-		column_ids = [ "ENSEMBL ID" ]
-	),
+	id_mapper = IdColumnMapper.for_node_id ( node_type = "gene", column_id = "ENSEMBL ID" ),
 	const_prop_mappers = [ 
 		ConstantPropertyMapper.for_type ( "Gene" ),
 		ConstantPropertyMapper ( property = "dataSources", constant_value = "ENSEMBL-Plants" ),
@@ -83,10 +79,7 @@ E2U_ENSEMBL_GENE_ACCESSION_MAPPERS = make_accession_mappers_for_source (
 E2U_ENSEMBL_PROTEIN_MAPPER = TabFileMapper (
 	# The node ID is usually a prefix + the accession for this type. The prefix is often needed
 	# because the same accessions are used for multiple related types, eg, genes and proteins.
-	id_mapper = IdColumnMapper.from_extractor (
-		extractor = lambda row: f"protein:{row['UniProt ID']}",
-		column_ids = [ "UniProt ID" ]
-	),
+	id_mapper = IdColumnMapper.for_node_id ( node_type = "protein", column_id = "UniProt ID" ),
 	const_prop_mappers = [ 
 		ConstantPropertyMapper.for_type ( "Protein" ),
 		ConstantPropertyMapper ( property = "dataSources", constant_value = "ENSEMBL-Plants" ),
@@ -111,19 +104,13 @@ E2U_TAIR_PROTEIN_ACCESSION_MAPPERS = make_accession_mappers_for_source (
 
 
 E2U_GENE2PROTEIN_MAPPER = TabFileMapper (
-	# Overrides the auto-generated ID, to avoid 'gene:' and 'protein:' redundancy placed here
-	id_mapper = ColumnMapper.from_extractor ( 
-		extractor = lambda row: f"encodes-protein-{row['ENSEMBL ID']}-{row['UniProt ID']}",
-		property = GraphTriple.ID_KEY,
-		column_ids = [ "ENSEMBL ID", "UniProt ID" ]
-	),
 	row_mappers = [
 		# endpoint ID mappers can often be reused
-		ColumnMapper.from_extractor ( E2U_ENSEMBL_GENE_MAPPER.id_mapper.value, GraphTriple.FROM_KEY, E2U_ENSEMBL_GENE_MAPPER.id_mapper.column_ids ),
-		ColumnMapper.from_extractor ( E2U_ENSEMBL_PROTEIN_MAPPER.id_mapper.value, GraphTriple.TO_KEY, E2U_ENSEMBL_PROTEIN_MAPPER.id_mapper.column_ids ),
+		RowTripleMapperMixin.for_from ( E2U_ENSEMBL_GENE_MAPPER.id_mapper ),
+		RowTripleMapperMixin.for_to ( E2U_ENSEMBL_PROTEIN_MAPPER.id_mapper ),
 	],
 	const_prop_mappers = [ 
-		ConstantPropertyMapper.for_type ( "encodes-protein" ),
+		ConstantPropertyMapper.for_type ( "encodesProtein" ),
 		ConstantPropertyMapper ( property = "dataSources", constant_value = "ENSEMBL Plants" ),
 		ConstantPropertyMapper ( property = "dataSources", constant_value = "TAIR" )
 	]

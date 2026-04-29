@@ -19,13 +19,16 @@ class GraphProperty:
 	"""
 	Core data structure to represent a knowledge graph node or relation property.
 
-	Attributes:
-		key (str): The property key/name.
-		value (Any): The property value. **WARNING**: in most of the KETL componenents, this
-		  stores a string/JSON representation of the actual value, as required by Spark DataFrames.
-			This is not a GraphProperty requirement or GraphTriple requirement, just how we use these
-			structures in most cases. See :class:`ketl.JSONBasedValueConverter`.
-			This applies to regular properties ONLY, not to special keys like :py:attr:`ketl.GraphProperty.TYPE_KEY`.
+	
+	# Attributes:
+	
+	- `key (str)`: The property key/name.
+
+	- `value (Any)`: The property value. **WARNING**: in most of the KETL componenents, this
+	stores a string/JSON representation of the actual value, as required by Spark DataFrames.
+	This is not a GraphProperty requirement or GraphTriple requirement, just how we use these
+	structures in most cases. See :class:`ketl.JSONBasedValueConverter`. This applies to regular 
+	properties ONLY, not to special keys like :py:attr:`ketl.GraphProperty.TYPE_KEY`.
 	"""
 
 	TYPE_KEY = "@type"
@@ -48,11 +51,11 @@ class GraphTriple ( GraphProperty ):
 	Core data structure to represent a knowledge graph property plus the ID of the node or relationship
 	it belongs to.
 
-	Attributes:
-		id (str): The node or relationship ID.
+	## Attributes
+	- `id (str)`: The node or relationship ID.
 
-		key/value inherited from :class:`ketl.GraphProperty`. As said above, values are usually stored
-		as string/JSON representations.
+	- key/value inherited from :class:`ketl.GraphProperty`. As said above, values are usually stored
+	as string/JSON representations.
 	"""
 
 	ID_KEY = "id"
@@ -95,13 +98,13 @@ class ValueConverter ( ABC ):
 
 	## Attributes:
 
-		name: The converter name (usually the class name).
+	- `name`: The converter name (usually the class name).
 
-		pre_serializers: An optional function or list of functions applied to a value before serialization.
-		This can be set via :meth:`add_pre_serializers()` to customize the pre-processing of values. 
-		For instance, it can be used to set defaults, or normalize known values (eg, trimming whitespaces).
-		If it's a list, it's elements are chained in the list order (see :meth:`add_pre_serializers()`).
-		If it's `None`, a default is set that returns None for null or falsy ('', [], etc) values.
+	- `pre_serializers`: An optional function or list of functions applied to a value before serialization.
+	This can be set via :meth:`add_pre_serializers()` to customize the pre-processing of values. 
+	For instance, it can be used to set defaults, or normalize known values (eg, trimming whitespaces).
+	If it's a list, it's elements are chained in the list order (see :meth:`add_pre_serializers()`).
+	If it's `None`, a default is set that returns None for null or falsy ('', [], etc) values.
 
 	TODO: this could be a Python protocol.
 	"""
@@ -224,7 +227,7 @@ class JSONBasedValueConverter ( ValueConverter ):
 
 class Mapper ( ABC ):
 	"""
-	Abstract root class/mixin for KETL mappers.
+	Abstract root class for KETL mappers.
 
 	A mapper is intended to map a single unit of data, such as a column value in a row or a field value
 	in a JSON object.
@@ -309,10 +312,10 @@ class ConstantPropertyMapper ( Mapper, PropertyMapperMixin ):
 	We manage constants through this mapper, so that we can ensure the serialisation and pre-serialisation
 	of configured Python data types (or custom types).
 
-	Attributes:
-		property (str): The property key/name.
-		constant_value (Any): The constant value to use to generate constant properties.
-		value_converter (ValueConverter): see :class:`ketl.Mapper`.
+	## Attributes
+	- `property (str)`: The property key/name.
+	- `constant_value (Any)`: The constant value to use to generate constant properties.
+	- `value_converter (ValueConverter)`: see :class:`ketl.Mapper`.
 	"""
 	def __init__ (
 		self,

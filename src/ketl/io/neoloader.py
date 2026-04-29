@@ -358,6 +358,7 @@ async def async_pg_jsonl_neo_loader (
 					# else, keep it
 			return js_batch
 
+		# TODO: ProcessPoolExecutor
 		executor = concurrent.futures.ThreadPoolExecutor ( max_workers = config.loader_max_concurrency )
 		n_loaded = 0
 
@@ -438,6 +439,7 @@ async def async_pg_jsonl_neo_loader (
 
 		Returns the number of loaded edges.
 		"""
+		# TODO: this ignores non-existing nodes :-(
 		query = """
 		UNWIND $edges AS edge_js
 		WITH edge_js.id AS eid, edge_js.labels[0] AS etype, 
