@@ -285,10 +285,6 @@ async def async_pg_jsonl_neo_loader (
 	
 	## Notes
 
-	**WARNING**: the neoloader **does require** APOC, which it uses to enforce that edge endpoints exist
-	when creating edges. With the Neo Docker container, you can pass -e NEO4J_PLUGINS='["apoc"]' to run Neo 
-	with APOC.
-
 	Note that we don't use any :class:`ketl.core.ValueConverter` here and no unserialisation from strings, 
 	since we assume the PG-JSONL already has values in a format that can always be translated to Neo4j. 
 	This is motivated by the fact that conversions are made by upstream functions in KETL, eg, 
@@ -405,22 +401,26 @@ async def async_pg_jsonl_neo_loader (
 		UNWIND $edges AS edge_js
 		WITH edge_js.id AS eid, edge_js.labels[0] AS etype, 
 		  edge_js.properties AS eprops, edge_js.from AS from_id, edge_js.to AS to_id
+		
 		OPTIONAL MATCH (from { id: from_id } )
 		OPTIONAL MATCH (to { id: to_id } )
-		CALL apoc.util.validate (
-		  from IS NULL, 
-			'ERROR with relation %s#%s: source node %s does not exist', [etype, eid, from_id]
-		)
-		CALL apoc.util.validate (
-		  to IS NULL, 
-			'ERROR with relation %s#%s: target node %s does not exist', [etype, eid, to_id]
-		)
+		
+		// Triggers an error if either endpoint is missing
+		WITH *, CASE WHEN from IS NULL OR to IS NULL THEN 1/0 ELSE 1 END AS check		
+		
 		CREATE (from)-[e:$(etype)]->(to)
 		SET e.id = eid
 		SET e += eprops
 		"""
 		async with neo_driver.session() as session:
-			await session.execute_write ( lambda tx: tx.run ( query, edges = edges_batch ) )
+			try:
+				await session.execute_write ( lambda tx: tx.run ( query, edges = edges_batch ) )
+			except neo4j.exceptions.ClientError as ex:
+				if "Neo.ClientError.Statement.ArithmeticError" in ex.code:
+					raise ValueError ( 
+						"pg_jsonl_neo_loader(), math error from Neo4j, likely, this is due to edges referring " \
+						"to non-existing nodes"
+					)
 		return len ( edges_batch )
 
 

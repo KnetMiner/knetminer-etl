@@ -791,10 +791,7 @@ def neo4j_container() -> Generator[ Neo4jContainer, None, None ]:
 	"""
 	The test container common to all driver fixtures and all the tests.
 	"""
-	# We use APOC in the neoloader, to enforce node existence upon edge creation
-	with Neo4jContainer()\
-		.with_env ( "NEO4J_PLUGINS", '[ "apoc" ]' )\
-	as container:
+	with Neo4jContainer() as container:
 		yield container
 
 
