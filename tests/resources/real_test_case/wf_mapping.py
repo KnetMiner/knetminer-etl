@@ -36,6 +36,7 @@ def make_accession_mappers_for_source (
 	)
 
 	rel_mapper = TabFileMapper (
+		id_mapper = SparkDataFrameMapper.AutoEdgeId (),
 		const_prop_mappers = [
 			# TODO: check AgriSchemas
 			ConstantPropertyMapper.for_type ( "hasAccession" ),
@@ -104,6 +105,7 @@ E2U_TAIR_PROTEIN_ACCESSION_MAPPERS = make_accession_mappers_for_source (
 
 
 E2U_GENE2PROTEIN_MAPPER = TabFileMapper (
+	id_mapper = SparkDataFrameMapper.AutoEdgeId (),
 	row_mappers = [
 		# endpoint ID mappers can often be reused
 		RowTripleMapperMixin.for_from ( E2U_ENSEMBL_GENE_MAPPER.id_mapper ),

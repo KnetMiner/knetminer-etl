@@ -44,7 +44,7 @@ rule all:
 	This just triggers the neo_loader rule for nodes and edges.
 	"""
 	input:
-		expand ( f"{KETL_OUT}/knowledge-graph.done.{{pg_type}}", pg_type = [ "nodes", "edges" ] )
+		f"{KETL_OUT}/knowledge-graph.done.edges"
 
 
 rule neo_loader:
@@ -57,33 +57,23 @@ rule neo_loader:
 	TODO: meh, this is too verbose, move the incremental logic to pg_jsonl_neo_loader()
 	"""
 	input:
-		f"{KETL_OUT}/knowledge-graph.json",
+		f"{KETL_OUT}/knowledge-graph.json"
 		# Forces sequential rule triggering
 		# TODO: it definitely needs async_pg_jsonl_neo_loader to be able to manage 
 		# the double call on its own.
-		lambda wc: (
-			[] if wc.pg_type == "nodes"
-			else f"{KETL_OUT}/knowledge-graph.done.nodes"
-		)
+		#lambda wc: (
+		#	[] if wc.pg_type == "nodes"
+		#	else f"{KETL_OUT}/knowledge-graph.done.nodes"
+		#)
 	output:
-		f"{KETL_OUT}/knowledge-graph.done.{{pg_type}}"
+		f"{KETL_OUT}/knowledge-graph.done.edges"
 	run:
-		import concurrent
-		# Remove '.nodes|edges'. TODO: do it inside the loader.
-		done_path = output[0].rsplit('.', 1)[0]
-		# Workaround to avoid the Snakemake event loop
-		# TODO: DEFINITELY to be moved in pg_jsonl_neo_loader()
-		with concurrent.futures.ThreadPoolExecutor ( max_workers = 1 ) as executor:
-			task = lambda: run_async_in_thread ( async_pg_jsonl_neo_loader (
-				pg_jsonl_source = Path ( input[0] ),
-				done_base_path = done_path,
-				neo_driver = wf_config.create_neo4j_driver (),
-				do_nodes = wildcards.pg_type == "nodes",
-				do_edges = wildcards.pg_type == "edges",
-				config = NEO_LOADER_CONFIG
-			))
-			n_elems = executor.submit ( task ).result ()
-			
+		n_elems = pg_jsonl_neo_loader (
+			pg_jsonl_source = Path ( input[0] ),
+			done_base_path = output[0],
+			neo_driver = wf_config.create_neo4j_driver (),
+			config = NEO_LOADER_CONFIG
+		)			
 
 
 rule triples_2_json_pg:
@@ -204,14 +194,3 @@ rule map_ensembl_plants_encodes:
 	run:
 		spark_session = wf_config.get_spark_session()
 		E2U_GENE2PROTEIN_MAPPER.map ( spark_session, input[0], out_path = output[0] )
-
-
-
-def run_async_in_thread ( coro ):
-	"""TODO: hack, refactor"""
-	loop = asyncio.new_event_loop()
-	asyncio.set_event_loop ( loop )
-	try:
-		return loop.run_until_complete ( coro )
-	finally:
-		loop.close()

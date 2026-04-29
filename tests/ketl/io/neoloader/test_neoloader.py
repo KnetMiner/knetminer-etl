@@ -464,6 +464,79 @@ def test_done_file_creation (
 		assert_that ( str(done_edges_path), "Done file for edges is created" ).exists ()
 
 
+def test_done_file_nodes_only ( 
+	pg_data: tuple[ list[ dict ], list[ dict ] ], 
+	neo4j_container: Neo4jContainer,
+	tmp_path: Path,
+):
+	"""
+	Tests that the `done_base_path` triggers the incremental behaviour, with nothing loaded if the 
+	nodes flag file exists.
+
+	It also tests that the .nodes suffix is correctly handled.
+
+	This is the variant where do_edges is False
+	"""
+	pg_nodes, pg_edges = pg_data
+	pg_nodes_str = "\n".join ( json.dumps ( node ) for node in pg_nodes )
+	pg_edges_str = "\n".join ( json.dumps ( edge ) for edge in pg_edges )
+
+	async_neo_driver: neo4j.AsyncDriver = create_async_neo_driver ( neo4j_container )
+
+	done_file_path = tmp_path / "done-flag-test.done.nodes"
+	done_file_path.touch ()
+
+	n_elements = pg_jsonl_neo_loader (
+		pg_jsonl_source = pg_nodes_str + "\n" + pg_edges_str,
+		neo_driver = async_neo_driver,
+		do_nodes = True, do_edges = False,
+		done_base_path = done_file_path
+	)
+
+	assert_that ( n_elements, "No elements are loaded when the nodes flag file exists" ).is_equal_to ( 0 )
+
+
+def test_done_file_all_pg ( 
+	pg_data: tuple[ list[ dict ], list[ dict ] ], 
+	neo4j_container: Neo4jContainer,
+	tmp_path: Path,
+):
+	"""
+	Tests that the `done_base_path` triggers the incremental behaviour, with only the edges
+	loaded if the nodes flag file exists and the edges flag file doesn't exist.
+
+	It also tests that the .nodes and .edges suffixes are correctly handled.
+	"""
+	pg_nodes, pg_edges = pg_data
+	pg_nodes_str = "\n".join ( json.dumps ( node ) for node in pg_nodes )
+	pg_edges_str = "\n".join ( json.dumps ( edge ) for edge in pg_edges )
+
+	async_neo_driver: neo4j.AsyncDriver = create_async_neo_driver ( neo4j_container )
+
+	done_file_base_path = tmp_path / "done-flag-test.done"
+	Path ( str ( done_file_base_path ) + ".nodes" ).touch ()
+
+	n_elements = pg_jsonl_neo_loader (
+		pg_jsonl_source = pg_nodes_str + "\n" + pg_edges_str,
+		neo_driver = async_neo_driver,
+		do_nodes = True, do_edges = True,
+		done_base_path = Path ( str ( done_file_base_path ) + ".edges" )
+	)
+
+	assert_that ( n_elements, "Only edges are loaded when the nodes flag only exists" )\
+		.is_equal_to ( len ( pg_edges ) )
+	
+	# Also tests edges aren't reloaded now
+	n_elements = pg_jsonl_neo_loader (
+		pg_jsonl_source = pg_nodes_str + "\n" + pg_edges_str,
+		neo_driver = async_neo_driver,
+		do_nodes = True, do_edges = True,
+		done_base_path = Path ( str ( done_file_base_path ) + ".edges" )
+	)
+	assert_that ( n_elements, "Edges aren't reloaded after the first loading with done flag file" )\
+		.is_equal_to ( 0 )
+
+
 @pytest.mark.integration
 @pytest.mark.parametrize ( 
 	ids = [ "eventual success", "no success" ],

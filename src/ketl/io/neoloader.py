@@ -250,25 +250,33 @@ async def async_pg_jsonl_neo_loader (
 
 	## Parameters
 
-	- pg_jsonl_source: the source of the JSONL/PG data. 
+	- `pg_jsonl_source`: the source of the JSONL/PG data. 
 	This is passed to :func:`ketl.async_reader_helper`, so it can be a file path, a file-like object,
 	a string of PG-JSON data, None (to get data from the stdin). **WARNING**: as said above, when 
 	both `do_nodes` and `do_edges` are set, the `pg_jsonl_source` can't be neither an iterator 
 	nor None/stdin.
 
-	- neo_driver: the Neo4j async driver to use for loading the data.
+	- `neo_driver`: the Neo4j async driver to use for loading the data.
 
-	- do_nodes, do_edges: whether to load nodes and edges, respectively. You can choose to load node definitions
+	- `do_nodes`, `do_edges`: whether to load nodes and edges, respectively. You can choose to load node definitions
 	or edge definitions only, which can be useful for testing or to have more incremental updates in a SnakeMake
 	pipeline. **WARNING**: you **can't** load edges that refer to nodes not loaded in the database, see above.
 
-	- config: the configuration object for the NeoLoader, containing settings like batch size and maximum concurrency.
+	- `config`: the configuration object for the NeoLoader, containing settings like batch size and maximum concurrency.
 
-	- done_base_path: if not None, the base path for the "done" files to be created when the loading is done.
-	This is useful in SnakeMake pipelines, to tell a rule that the loading is done. When nodes loading is completed,
-	`{base_path}.nodes` is created and `{base_path}.edges is created when the edges are loaded, which means
-	you can continue a previous loading from the edges only. Being flag files, their content is irrelevant.
-
+	- `done_base_path`: if not None, the base path for the "done" files to be created when the loading is done.
+	This is useful in SnakeMake pipelines and alike, to tell a rule that the loading is done. When nodes loading 
+	is completed, `{base_path}.nodes` is created and `{base_path}.edges is created when the edges are loaded, 
+	which means you can continue a previous loading from the edges only. Being flag files, their content is irrelevant.
+	
+	**Note**: if `done_base_path` is given, there are other behaviours that are triggered:
+	* '.nodes' or '.edges' trailers are removed from the parameter. That's because workflows like SnakeMake
+	needs to specify the whole path to expect as a rule output, while here we want to be able to add
+	these trailers based on the kind of loading we're doing.
+	* if the '.nodes' or '.edges' files already exist, we **don't do the corresponding loading**. This
+	allows for writing a single rule in a system like SnakeMake that only expects the '.edges' file, 
+	we internally do a bit of progressive loading.
+  
 
 	## Returns
 
@@ -358,7 +366,7 @@ async def async_pg_jsonl_neo_loader (
 					# else, keep it
 			return js_batch
 
-		# TODO: ProcessPoolExecutor
+		# TODO: ProcessPoolExecutor, requires nested functions to be moved on top
 		executor = concurrent.futures.ThreadPoolExecutor ( max_workers = config.loader_max_concurrency )
 		n_loaded = 0
 
@@ -481,6 +489,16 @@ async def async_pg_jsonl_neo_loader (
 				f"pg_jsonl_neo_loader(), attempt to load both nodes and edges with a non-rewindable source."
 				+ " Pass me a string, a path or a rewindable file-like object."
 			)
+		
+	# Some more initialisation
+	(is_nodes_done_flag, is_edges_done_flag) = (False, False)
+	if done_base_path is not None:
+		done_base_path = str ( done_base_path )
+		if done_base_path.endswith ( ".nodes" ) or done_base_path.endswith ( ".edges" ):
+			done_base_path = done_base_path.rsplit ( ".", 1 )[ 0 ]
+		
+		is_nodes_done_flag = Path ( done_base_path + ".nodes" ).exists ()
+		is_edges_done_flag = Path ( done_base_path + ".edges" ).exists ()
 
 	# Some heading in the log
 	source_str = None
@@ -497,6 +515,8 @@ async def async_pg_jsonl_neo_loader (
 
 	if not do_nodes:
 		log.info ( f"pg_jsonl_neo_loader(), do_nodes not set, skipping nodes loading" )
+	elif is_nodes_done_flag:
+		log.info ( f"pg_jsonl_neo_loader(), node done file \"{done_base_path}.nodes\" exists, skipping nodes loading" )
 	else:
 		log.info ( f"|== Loading Nodes" )
 		progress_logger.log_message_template = "%d knowledge graph nodes loaded"
@@ -510,6 +530,10 @@ async def async_pg_jsonl_neo_loader (
 
 	if not do_edges:
 		log.info ( f"pg_jsonl_neo_loader(), do_edges not set, skipping edges loading" )
+	elif is_edges_done_flag and is_nodes_done_flag:
+		# Edge loading must happen anyway if the nodes have just been reloaded
+		# Unfortunately, this won't work in a rule checking .edges only, but we have it just in case
+		log.info ( f"pg_jsonl_neo_loader(), edge done file \"{done_base_path}.edges\" exists, skipping edges loading" )
 	else:
 		log.info ( f"|== Loading Edges" )
 
@@ -556,13 +580,27 @@ def pg_jsonl_neo_loader (
 	This is only a synchronous wrapper for :func:`ketl.async_pg_jsonl_neo_loader`, the meat is there, 
 	including detailed documentation.
 
-	This wrapper simply uses `asyncio.run` to run the async version, so it can be used to start a new async event loop and 
-	run the async stuff in it. **DO NOT** call this function from an already running async context, since you'll likely 
-	stumble upon errors. In that case, use :func:`ketl.async_pg_jsonl_neo_loader` instead.
+	This wrapper runs the async loader in a fresh event loop, created in a fresh new thread. This 
+	is a safe way to avoid horrible conflicts with already running event loops in the current thread
+	or contexts (we have had quite some pain with pytest and Snakemake, we know other workflow systems,
+	Jupyter and more can cause similar issues).
+	
+	**WARNING**: this also means that calling this function too many times **is not efficient**. 
+	If you need that, call the async version from your own sync/async management context (good luck...).
+
+	TODO: this might actually be unsafe when the driver is created in a different event loop, add
+	support to a [factory function](https://chatgpt.com/share/69f20131-2034-832e-89cd-625d7b35e3e3)
+	for the driver. 
 	"""
-	return asyncio.run ( async_pg_jsonl_neo_loader (
-		pg_jsonl_source, neo_driver, do_nodes, do_edges, config, done_base_path
-	))
+	
+	with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+		future = executor.submit ( 
+			asyncio.run,
+			async_pg_jsonl_neo_loader (
+				pg_jsonl_source, neo_driver, do_nodes, do_edges, config, done_base_path
+			)				
+		)
+		return future.result()
 
 
 def create_neo_driver_from_config ( config: dict, is_async: bool = False ) -> neo4j.Driver|neo4j.AsyncDriver:
