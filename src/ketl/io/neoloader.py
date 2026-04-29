@@ -315,57 +315,6 @@ async def async_pg_jsonl_neo_loader (
 		of loaded elements.
 		"""
 
-		def parse_pg_elem_property ( prop_id: str, pg_value: list[Any], elem_id: str ) -> dict[str, Any]:
-			"""
-			Parses a PG property value, applying the configuration for that property as needed.
-
-			At the moment, the only configuration is how to deal with multiple values, but more can be added in the future.
-			"""
-			if pg_value is None: return None # TODO: can it happen?
-			if not isinstance ( pg_value, list ):
-				raise ValueError ( f"pg_jsonl_neo_loader(), property '{prop_id}' in element '{elem_id}' has a non-list value" )
-
-			# Remove None values from the list. TODO: can it happen?
-			pg_value = [ v for v in pg_value if v is not None ]
-			if len ( pg_value ) == 0: return None
-
-			prop_config = config.get_property_config ( prop_id )
-			result = None
-
-			if len ( pg_value ) == 1:
-				if prop_config.multi_value_mode in ( NeoLoaderPropertyConfig.MultiValueMode.SINGLE, NeoLoaderPropertyConfig.MultiValueMode.AUTO ):
-					result = pg_value [ 0 ]
-				else:
-					# it's multiple mode
-					result = pg_value
-			else:
-				# > 1 case
-				if prop_config.multi_value_mode == NeoLoaderPropertyConfig.MultiValueMode.SINGLE:
-					raise ValueError ( f"pg_jsonl_neo_loader(), multiple values aren't allowed for property '{prop_id}' in element '{elem_id}'" )
-				# else, we're in auto or multiple
-				result = list ( set ( pg_value ) ) # Remove duplicates, and convert to list for better Neo4j compatibility.
-
-			return result
-
-		def parse_jsonl_batch ( batch: list[str] ) -> list[dict[str, Any]]:
-			# Parse it all, it's faster
-			js_batch = json.loads ( "[" + ",".join ( js_line for js_line in batch ) + "]" )
-
-			# Apply the property configurations to each element
-			for elem in js_batch:
-				elem_id = elem [ "id" ]
-				# We need a copy, since we might change the dict
-				for prop_id in list ( elem.get ( "properties", {} ).keys () ):
-					pg_value = elem [ "properties" ][ prop_id ]
-					new_value = parse_pg_elem_property ( prop_id, pg_value, elem_id )
-					if new_value is None:
-						# Just don't store it
-						elem [ "properties" ].pop ( prop_id )
-					elif new_value != pg_value:
-						elem [ "properties" ][ prop_id ] = new_value
-					# else, keep it
-			return js_batch
-
 		# TODO: ProcessPoolExecutor, requires nested functions to be moved on top
 		n_loaded = 0
 
@@ -376,14 +325,22 @@ async def async_pg_jsonl_neo_loader (
 		# Switch to a filtered iterable
 		pg_elems_source = ( line for line in pg_elems_source if line and re.search ( type_re, line ) )
 
-		with concurrent.futures.ThreadPoolExecutor ( max_workers = config.loader_max_concurrency ) as executor:
+		# We have seen that for up to 1M nodes, the ThreadPoolExeutor is actually slightly faster,
+		# presumably because there isn't much CPU work, the batch size isn't very big, and a few
+		# operations (eg, json.loads()) releases the GIL.
+		# However, since things might be different with different inputs, we're leaving the 
+		# InterpreterPoolExecutor. TODO: at least for now.
+		with concurrent.futures.InterpreterPoolExecutor ( max_workers = config.loader_max_concurrency ) \
+		as executor:
 			while True:
 				batch = list ( islice ( pg_elems_source, config.loader_batch_size ) )
 				if not batch: break
 
 				loop = asyncio.get_running_loop()
 				# Parse/transform the JSON lines in parallel
-				pg_elems: list[dict[str, Any]] = await loop.run_in_executor ( executor, parse_jsonl_batch, batch )
+				pg_elems: list[dict[str, Any]] = await loop.run_in_executor (
+					executor, _parse_jsonl_batch, batch, config
+				)
 
 				# Do the loading asynchronously. So, we have parallel parsers added to the main thread running the source
 				# scanning plus the loaders in the event loop.
@@ -736,6 +693,69 @@ def pg_jsonl_neo_loader_cli ( args: list[str], do_sys_exit: bool = True ) -> Non
 	else:
 		return exit_code
 
+
+
+def _parse_jsonl_batch ( batch: list[str], config: NeoLoaderConfig ) -> list[dict[str, Any]]:
+	"""
+	Helper used by :func:`async_pg_jsonl_neo_loader` to parse a batch of PG-JSONL lines into 
+	a list of dictionaries. This is passed to the `ProcessPoolExecutor`, so it can't be 
+	a nested function.
+	"""
+	js_batch = json.loads ( "[" + ",".join ( js_line for js_line in batch ) + "]" )
+
+	# Apply the property configurations to each element
+	for elem in js_batch:
+		elem_id = elem [ "id" ]
+		# We need a copy, since we might change the dict
+		for prop_id in list ( elem.get ( "properties", {} ).keys () ):
+			pg_value = elem [ "properties" ][ prop_id ]
+			new_value = _parse_pg_elem_property ( prop_id, pg_value, elem_id, config )
+			if new_value is None:
+				# Just don't store it
+				elem [ "properties" ].pop ( prop_id )
+			elif new_value != pg_value:
+				elem [ "properties" ][ prop_id ] = new_value
+			# else, keep it
+	return js_batch
+
+
+def _parse_pg_elem_property ( 
+	prop_id: str, pg_value: list[Any], elem_id: str, config: NeoLoaderConfig 
+) -> dict[str, Any]:
+	"""
+	Parses a PG property value, applying the configuration for that property as needed.
+
+	At the moment, the only configuration is how to deal with multiple values, but more can be added 
+	in the future.
+
+	This is used by :func:`_parse_jsonl_batch`, which in turn, is passed to the `ProcessPoolExecutor`, 
+	so it can't be a nested function.
+	"""
+	if pg_value is None: return None # TODO: can it happen?
+	if not isinstance ( pg_value, list ):
+		raise ValueError ( f"pg_jsonl_neo_loader(), property '{prop_id}' in element '{elem_id}' has a non-list value" )
+
+	# Remove None values from the list. TODO: can it happen?
+	pg_value = [ v for v in pg_value if v is not None ]
+	if len ( pg_value ) == 0: return None
+
+	prop_config = config.get_property_config ( prop_id )
+	result = None
+
+	if len ( pg_value ) == 1:
+		if prop_config.multi_value_mode in ( NeoLoaderPropertyConfig.MultiValueMode.SINGLE, NeoLoaderPropertyConfig.MultiValueMode.AUTO ):
+			result = pg_value [ 0 ]
+		else:
+			# it's multiple mode
+			result = pg_value
+	else:
+		# > 1 case
+		if prop_config.multi_value_mode == NeoLoaderPropertyConfig.MultiValueMode.SINGLE:
+			raise ValueError ( f"pg_jsonl_neo_loader(), multiple values aren't allowed for property '{prop_id}' in element '{elem_id}'" )
+		# else, we're in auto or multiple
+		result = list ( set ( pg_value ) ) # Remove duplicates, and convert to list for better Neo4j compatibility.
+
+	return result
 
 if __name__ == "__main__":
 	# Of course, we call the CLI loader when the module is invoked, so you can do:
