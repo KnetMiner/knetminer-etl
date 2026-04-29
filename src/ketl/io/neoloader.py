@@ -367,41 +367,32 @@ async def async_pg_jsonl_neo_loader (
 			return js_batch
 
 		# TODO: ProcessPoolExecutor, requires nested functions to be moved on top
-		executor = concurrent.futures.ThreadPoolExecutor ( max_workers = config.loader_max_concurrency )
 		n_loaded = 0
 
 		type_filter = "node" if is_nodes_mode else "edge"
 		type_re = f"""("type"|'type'):\\s*("{type_filter}"|'{type_filter}')"""
 		type_re = re.compile ( type_re )
 
-		# Switch to a filtered iterable:
-
-		# TODO: remove me
-		def line_debugger ( line: str ) -> str:
-			log.debug ( f"line is {line}" )
-			return line and re.search ( type_re, line )
-
+		# Switch to a filtered iterable
 		pg_elems_source = ( line for line in pg_elems_source if line and re.search ( type_re, line ) )
 
-		# TODO: remove me 
-		# pg_elems_source = ( line for line in pg_elems_source if line_debugger ( line ) )
+		with concurrent.futures.ThreadPoolExecutor ( max_workers = config.loader_max_concurrency ) as executor:
+			while True:
+				batch = list ( islice ( pg_elems_source, config.loader_batch_size ) )
+				if not batch: break
 
-		while True:
-			batch = list ( islice ( pg_elems_source, config.loader_batch_size ) )
-			if not batch: break
+				loop = asyncio.get_running_loop()
+				# Parse/transform the JSON lines in parallel
+				pg_elems: list[dict[str, Any]] = await loop.run_in_executor ( executor, parse_jsonl_batch, batch )
 
-			loop = asyncio.get_running_loop()
-			# Parse/transform the JSON lines in parallel
-			pg_elems: list[dict[str, Any]] = await loop.run_in_executor ( executor, parse_jsonl_batch, batch )
-
-			# Do the loading asynchronously. So, we have parallel parsers added to the main thread running the source
-			# scanning plus the loaders in the event loop.
-			n_loaded += await batch_loader ( pg_elems )
-			progress_logger.update ( n_loaded )
+				# Do the loading asynchronously. So, we have parallel parsers added to the main thread running the source
+				# scanning plus the loaders in the event loop.
+				n_loaded += await batch_loader ( pg_elems )
+				progress_logger.update ( n_loaded )
 
 		write_done_file ( is_nodes_mode )
 		return n_loaded
-
+	
 
 	async def nodes_load ( nodes_batch: list[dict[str, Any]] ) -> int:
 		"""
