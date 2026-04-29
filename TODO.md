@@ -24,3 +24,4 @@
 * [X] Get rid of neo warnings
 * [X] Neo retries (in edge creation)
 * [X] done flag (for Snakemake)
+* [ ] Performance: add a common label to all the nodes and index it on `id` before edge loading

@@ -285,6 +285,10 @@ async def async_pg_jsonl_neo_loader (
 	
 	## Notes
 
+	**WARNING**: the neoloader **does require** APOC, which it uses to enforce that edge endpoints exist
+	when creating edges. With the Neo Docker container, you can pass -e NEO4J_PLUGINS='["apoc"]' to run Neo 
+	with APOC.
+
 	Note that we don't use any :class:`ketl.core.ValueConverter` here and no unserialisation from strings, 
 	since we assume the PG-JSONL already has values in a format that can always be translated to Neo4j. 
 	This is motivated by the fact that conversions are made by upstream functions in KETL, eg, 
@@ -380,7 +384,8 @@ async def async_pg_jsonl_neo_loader (
 		stop = tenacity.stop_after_attempt ( config.max_transaction_retries ),
 		# Wait a random time of 2s - max time between retries
 		wait = tenacity.wait_random ( min = timedelta ( seconds = 2 ), max = config.max_retry_pause ),
-		reraise = neo4j.exceptions.TransientError,
+		retry = tenacity.retry_if_exception_type ( neo4j.exceptions.TransientError ),
+		reraise = True,
 		before_sleep = lambda retry_state: log.warning ( 
 			f"pg_jsonl_neo_loader(), edge batch loading failed due to: {retry_state.outcome.exception()}, " + 
 			f"attempting {config.max_transaction_retries - retry_state.attempt_number} more time(s)"
@@ -395,13 +400,21 @@ async def async_pg_jsonl_neo_loader (
 
 		Returns the number of loaded edges.
 		"""
-		# TODO: this ignores non-existing nodes :-(
+		# TODO: Add a test about validation
 		query = """
 		UNWIND $edges AS edge_js
 		WITH edge_js.id AS eid, edge_js.labels[0] AS etype, 
 		  edge_js.properties AS eprops, edge_js.from AS from_id, edge_js.to AS to_id
-		MATCH (from { id: from_id } )
-		MATCH (to { id: to_id } )
+		OPTIONAL MATCH (from { id: from_id } )
+		OPTIONAL MATCH (to { id: to_id } )
+		CALL apoc.util.validate (
+		  from IS NULL, 
+			'ERROR with relation %s#%s: source node %s does not exist', [etype, eid, from_id]
+		)
+		CALL apoc.util.validate (
+		  to IS NULL, 
+			'ERROR with relation %s#%s: target node %s does not exist', [etype, eid, to_id]
+		)
 		CREATE (from)-[e:$(etype)]->(to)
 		SET e.id = eid
 		SET e += eprops

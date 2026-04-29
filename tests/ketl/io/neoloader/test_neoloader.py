@@ -511,11 +511,20 @@ def test_done_file_all_pg (
 	pg_nodes_str = "\n".join ( json.dumps ( node ) for node in pg_nodes )
 	pg_edges_str = "\n".join ( json.dumps ( edge ) for edge in pg_edges )
 
-	async_neo_driver: neo4j.AsyncDriver = create_async_neo_driver ( neo4j_container )
+	async_neo_driver = create_async_neo_driver ( neo4j_container )
+	# Nodes need to be there, so that the edge loading doesn't fail upon missing nodes.
+	pg_jsonl_neo_loader (
+		pg_jsonl_source = pg_nodes_str + "\n" + pg_edges_str,
+		neo_driver = async_neo_driver,
+		do_nodes = True, do_edges = False
+	)
 
 	done_file_base_path = tmp_path / "done-flag-test.done"
 	Path ( str ( done_file_base_path ) + ".nodes" ).touch ()
 
+	# We need a new driver, cause the sync loader creates a new event loop
+	async_neo_driver = create_async_neo_driver ( neo4j_container )
+	# Then, this should do the edges only (correctly)
 	n_elements = pg_jsonl_neo_loader (
 		pg_jsonl_source = pg_nodes_str + "\n" + pg_edges_str,
 		neo_driver = async_neo_driver,
@@ -527,12 +536,14 @@ def test_done_file_all_pg (
 		.is_equal_to ( len ( pg_edges ) )
 	
 	# Also tests edges aren't reloaded now
+	async_neo_driver = create_async_neo_driver ( neo4j_container )
 	n_elements = pg_jsonl_neo_loader (
 		pg_jsonl_source = pg_nodes_str + "\n" + pg_edges_str,
 		neo_driver = async_neo_driver,
 		do_nodes = True, do_edges = True,
 		done_base_path = Path ( str ( done_file_base_path ) + ".edges" )
 	)
+
 	assert_that ( n_elements, "Edges aren't reloaded after the first loading with done flag file" )\
 		.is_equal_to ( 0 )
 
@@ -780,7 +791,10 @@ def neo4j_container() -> Generator[ Neo4jContainer, None, None ]:
 	"""
 	The test container common to all driver fixtures and all the tests.
 	"""
-	with Neo4jContainer() as container:
+	# We use APOC in the neoloader, to enforce node existence upon edge creation
+	with Neo4jContainer()\
+		.with_env ( "NEO4J_PLUGINS", '[ "apoc" ]' )\
+	as container:
 		yield container
 
 
