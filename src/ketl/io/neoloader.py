@@ -698,7 +698,7 @@ def pg_jsonl_neo_loader_cli ( args: list[str], do_sys_exit: bool = True ) -> Non
 def _parse_jsonl_batch ( batch: list[str], config: NeoLoaderConfig ) -> list[dict[str, Any]]:
 	"""
 	Helper used by :func:`async_pg_jsonl_neo_loader` to parse a batch of PG-JSONL lines into 
-	a list of dictionaries. This is passed to the `ProcessPoolExecutor`, so it can't be 
+	a list of dictionaries. This might be passed to `ProcessPoolExecutor`, so it can't be 
 	a nested function.
 	"""
 	js_batch = json.loads ( "[" + ",".join ( js_line for js_line in batch ) + "]" )
@@ -725,10 +725,10 @@ def _parse_pg_elem_property (
 	"""
 	Parses a PG property value, applying the configuration for that property as needed.
 
-	At the moment, the only configuration is how to deal with multiple values, but more can be added 
+	At the moment, the only configuration concerns how to deal with multiple values, but more could be added 
 	in the future.
 
-	This is used by :func:`_parse_jsonl_batch`, which in turn, is passed to the `ProcessPoolExecutor`, 
+	This is used by :func:`_parse_jsonl_batch`, which in turn, might be passed to the `ProcessPoolExecutor`, 
 	so it can't be a nested function.
 	"""
 	if pg_value is None: return None # TODO: can it happen?
