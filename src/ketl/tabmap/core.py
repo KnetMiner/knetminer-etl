@@ -4,7 +4,7 @@ Tabular/CSV mapping tools for KnetMiner ETLs
 
 import logging
 from abc import abstractmethod
-from typing import Any, Dict
+from typing import Any, Callable, Dict
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import explode, udf
@@ -55,7 +55,7 @@ class RowValueMapper ( Mapper ):
 	@classmethod
 	def from_extractor ( 
 		cls,
-		extractor: callable [ dict [ str, Any ], Any ],
+		extractor: Callable [ [ dict[ str, Any ] ], Any ],
 		column_ids: list [ str ],
 		value_converter: ValueConverter | None = None,
 		pre_serializers: PreSerializers | None = None,
@@ -258,7 +258,7 @@ class RowTripleMapperMixin ( RowValueMapper, PropertyMapperMixin ):
 	@classmethod
 	def for_to ( 
 		cls, 
-		extractor: callable [ dict [ str, Any ], Any ] | RowValueMapper,
+		extractor: Callable [ [ dict[ str, Any ] ], Any ] | RowValueMapper,
 		column_ids: list [ str ] | None = None
 	) -> RowTripleMapperMixin:
 		"""
@@ -573,9 +573,9 @@ class SparkDataFrameMapper:
 
 		out_schema = ArrayType (
 			StructType ([
-					StructField ( "id", StringType(), False ),
-					StructField ( "key", StringType(), False ),
-					StructField ( "value", StringType(), True )
+				StructField ( "id", StringType(), False ),
+				StructField ( "key", StringType(), False ),
+				StructField ( "value", StringType(), True )
 			])
 		)
 
