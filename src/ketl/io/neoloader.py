@@ -387,7 +387,7 @@ async def async_pg_jsonl_neo_loader (
 		"""
 		if not config.common_node_label:
 			raise ValueError ( "pg_jsonl_neo_loader(), common_node_label is not set in the config. This can't be void" )
-		query = f"CREATE INDEX IF NOT EXISTS FOR (n:{config.common_node_label}) ON (n.id)"
+		query = f"CREATE INDEX all_node_ids IF NOT EXISTS FOR (n:{config.common_node_label}) ON (n.id)"
 		async with neo_driver.session() as session:
 			await session.execute_write ( lambda tx: tx.run ( query ) )
 
