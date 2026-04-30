@@ -117,8 +117,6 @@ class NeoLoaderPropertyConfig:
 
 @dataclass
 class NeoLoaderConfig:
-	# TODO: field() is needed for mutable defaults, but it feels like mumbo-jumbo, maybe
-	# we should go back to regular classes.
 	property_configs: dict[str, NeoLoaderPropertyConfig] = field( default_factory = dict )
 	"""
 	A dictionary of property ID -> configuration for that property.
@@ -164,6 +162,14 @@ class NeoLoaderConfig:
 	doing special things like tests.
 	"""
 
+	common_node_label = "Node"
+	"""
+	All the nodes get this label added, plus those coming from the input. We need it for operations like
+	indexing all the nodes over `id`, which in turn, is needed to speed up the edge loading.
+
+	Almost likely, you don't have any need to change this.
+	"""
+
 	def get_property_config ( self, property_id: str ) -> NeoLoaderPropertyConfig:
 		if not property_id in self.property_configs:
 			return self.default_property_config
@@ -199,23 +205,23 @@ class NeoLoaderConfig:
 		"""
 
 		if not config: return cls()
-		params = config.copy ()
+		cfg_dict = config.copy ()
 
 		# Let's convert the keys that can't be given as-is to the constructor
-		if "default_property_config" in params:
-			params [ "default_property_config" ] = NeoLoaderPropertyConfig.from_config ( params [ "default_property_config" ] )
-		if "property_configs" in params:
-			params [ "property_configs" ] = { 
+		if "default_property_config" in cfg_dict:
+			cfg_dict [ "default_property_config" ] = NeoLoaderPropertyConfig.from_config ( cfg_dict [ "default_property_config" ] )
+		if "property_configs" in cfg_dict:
+			cfg_dict [ "property_configs" ] = { 
 				prop_id: NeoLoaderPropertyConfig.from_config ( prop_config ) 
-				for prop_id, prop_config in params [ "property_configs" ].items ()
+				for prop_id, prop_config in cfg_dict [ "property_configs" ].items ()
 			}
-		if "max_retry_pause" in params:
-			max_retry_pause = params [ "max_retry_pause" ]
+		if "max_retry_pause" in cfg_dict:
+			max_retry_pause = cfg_dict [ "max_retry_pause" ]
 			try:
-				params [ "max_retry_pause" ] = timedelta ( **max_retry_pause )
+				cfg_dict [ "max_retry_pause" ] = timedelta ( **max_retry_pause )
 			except Exception as ex:
 				raise ValueError ( f"Invalid max_retry_pause configuration: {max_retry_pause}" ) from ex
-		return cls ( **params )
+		return cls ( **cfg_dict )
 
 
 async def async_pg_jsonl_neo_loader (
@@ -363,15 +369,27 @@ async def async_pg_jsonl_neo_loader (
 		query = """
 		UNWIND $nodes AS node_js
 		WITH node_js.id AS nid, node_js.labels AS nlabels, node_js.properties AS nprops
-		UNWIND nlabels AS nlabel
 		CREATE (n) 
 		SET n.id = nid
 		SET n += nprops
-		SET n :$(nlabel)
+		SET n :$(nlabels)
 		"""
 		async with neo_driver.session() as session:
 			await session.execute_write ( lambda tx: tx.run ( query, nodes = nodes_batch ) )
 		return len ( nodes_batch )
+	
+
+	async def nodes_index () -> None:
+		"""
+		Creates an index on the `id` property of all nodes, to speed up the edges loading.
+
+		This uses :attr:`NeoLoaderConfig.common_node_label` to target all the nodes.
+		"""
+		if not config.common_node_label:
+			raise ValueError ( "pg_jsonl_neo_loader(), common_node_label is not set in the config. This can't be void" )
+		query = f"CREATE INDEX IF NOT EXISTS FOR (n:{config.common_node_label}) ON (n.id)"
+		async with neo_driver.session() as session:
+			await session.execute_write ( lambda tx: tx.run ( query ) )
 
 
 	# It's known that async/parallel edge creations cause transaction collisions, 
@@ -402,8 +420,8 @@ async def async_pg_jsonl_neo_loader (
 		WITH edge_js.id AS eid, edge_js.labels[0] AS etype, 
 		  edge_js.properties AS eprops, edge_js.from AS from_id, edge_js.to AS to_id
 		
-		OPTIONAL MATCH (from { id: from_id } )
-		OPTIONAL MATCH (to { id: to_id } )
+		OPTIONAL MATCH (from: %s{ id: from_id } )
+		OPTIONAL MATCH (to: %s{ id: to_id } )
 		
 		// Triggers an error if either endpoint is missing
 		WITH *, CASE WHEN from IS NULL OR to IS NULL THEN 1/0 ELSE 1 END AS check		
@@ -412,6 +430,7 @@ async def async_pg_jsonl_neo_loader (
 		SET e.id = eid
 		SET e += eprops
 		"""
+		query = query % ( config.common_node_label, config.common_node_label )
 		async with neo_driver.session() as session:
 			try:
 				await session.execute_write ( lambda tx: tx.run ( query, edges = edges_batch ) )
@@ -443,6 +462,7 @@ async def async_pg_jsonl_neo_loader (
 	#
 
 	# Some consistency check
+	#
 	source_has_seek = hasattr ( pg_jsonl_source, "seek" ) and callable ( pg_jsonl_source.seek )
 	if do_edges and do_nodes:
 		if not ( isinstance ( pg_jsonl_source, (str, Path, Iterable) ) or source_has_seek ):
@@ -452,6 +472,7 @@ async def async_pg_jsonl_neo_loader (
 			)
 		
 	# Some more initialisation
+	#
 	(is_nodes_done_flag, is_edges_done_flag) = (False, False)
 	if done_base_path is not None:
 		done_base_path = str ( done_base_path )
@@ -461,7 +482,8 @@ async def async_pg_jsonl_neo_loader (
 		is_nodes_done_flag = Path ( done_base_path + ".nodes" ).exists ()
 		is_edges_done_flag = Path ( done_base_path + ".edges" ).exists ()
 
-	# Some heading in the log
+	# Some headers in the log
+	#
 	source_str = None
 	if isinstance ( pg_jsonl_source, Path ):
 		source_str = f'"{pg_jsonl_source}"'
@@ -487,8 +509,12 @@ async def async_pg_jsonl_neo_loader (
 			lambda src: main_loop ( src, is_nodes_mode = True, batch_loader = nodes_load ),
 			pg_jsonl_source
 		)
+		log.info ( f"|== Nodes loading completed, Indexing nodes by ID" )
+		await nodes_index ()
 		log.info ( f"|== A total of {n_nodes} node(s) loaded." )
 
+	# And now the edges
+	#
 	if not do_edges:
 		log.info ( f"pg_jsonl_neo_loader(), do_edges not set, skipping edges loading" )
 	elif is_edges_done_flag and is_nodes_done_flag:
@@ -729,6 +755,15 @@ def _parse_jsonl_batch ( batch: list[str], config: NeoLoaderConfig ) -> list[dic
 			elif new_value != pg_value:
 				elem [ "properties" ][ prop_id ] = new_value
 			# else, keep it
+
+	# Add the common node label
+	for elem in ( _ for _ in js_batch if _ [ "type" ] == "node" ):
+		if "labels" not in elem:
+			# TODO: should we raise an error?
+			elem [ "labels" ] = [] 
+		if config.common_node_label not in elem [ "labels" ]:
+			elem [ "labels" ].append ( config.common_node_label )
+	
 	return js_batch
 
 

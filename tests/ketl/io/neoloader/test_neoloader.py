@@ -37,19 +37,20 @@ def test_nodes_loading (
 	"""
 	Tests for :py:func:`ketl.pg_jsonl_neo_loader()`.
 
-	It uses the async driver with the loader and the sync one to verify the results via Cypher.
+	This also tests the addition of the common node label.
 	"""
 
 	pg_nodes = pg_data[ 0 ]
 	pg_nodes_str = "\n".join ( json.dumps ( node ) for node in pg_nodes )
 
 	async_neo_driver: neo4j.AsyncDriver = create_async_neo_driver ( neo4j_container )
+	config = create_multiple_multi_value_config ()
 
 	n_nodes = pg_jsonl_neo_loader (
 		pg_jsonl_source = pg_nodes_str,
 		neo_driver = async_neo_driver,
 		do_nodes = True, do_edges = False,
-		config = create_multiple_multi_value_config ()
+		config = config
 	)
 
 	assert_that ( n_nodes, "Return value from the loader is correct" ).is_equal_to ( len ( pg_nodes ) )
@@ -65,8 +66,9 @@ def test_nodes_loading (
 			record = result.single()
 			assert_that ( record, f"Node {node['id']} is found in the database" ).is_not_none ()
 			db_node = record[ "n" ]
+			expected_labels = set ( node[ "labels" ] + [ config.common_node_label ] )
 			assert_that ( db_node.labels, f"Node {node['id']} has correct labels in the database" )\
-				.contains_only ( *node[ "labels" ] )
+				.contains_only ( *expected_labels )
 			for prop_key, prop_values in node[ "properties" ].items():
 				assert_that ( db_node.get ( prop_key ), f"Node {node['id']} has property '{prop_key}' in the database" ).is_not_none ()
 				assert_that ( set ( db_node.get ( prop_key ) ), f"Node {node['id']} has correct values for property '{prop_key}' in the database" )\
@@ -169,13 +171,19 @@ def test_loading_from_file (
 
 
 @pytest.mark.integration
-def test_large_input_nodes ( neo4j_container: Neo4jContainer, neo_driver: neo4j.Driver ):
+def test_large_input_nodes ( 
+	neo4j_container: Neo4jContainer, neo_driver: neo4j.Driver, 
+	input_size: int = 50000, label = "TestNode"
+):
+	"""
+	Tests the loading of a large no of noes. This is also used by :func:`test_large_graph()`
+	"""
+
 	async_neo_driver: neo4j.AsyncDriver = create_async_neo_driver ( neo4j_container )
 
-	input_size = 50000
 	# The input is a stream and not a file, the internal reader is flexible with various input sources
 	nodes_stream = ( 
-		json.dumps ( {"type": "node", "id": f"N{i}", "labels": ["TestNode"], "properties": {"index": [i]} } ) 
+		json.dumps ( {"type": "node", "id": f"N{i}", "labels": [label], "properties": {"index": [i]} } ) 
 		for i in range ( input_size )
 	)
 	n_nodes = pg_jsonl_neo_loader (
@@ -188,7 +196,7 @@ def test_large_input_nodes ( neo4j_container: Neo4jContainer, neo_driver: neo4j.
 
 	# Cypher count is right
 	with neo_driver.session() as session:
-		result = session.run ( "MATCH (n:TestNode) RETURN count(n) AS count" )
+		result = session.run ( f"MATCH (n:{label}) RETURN count(n) AS count" )
 		record = result.single()
 		assert_that ( record, "Count query returns a record" ).is_not_none ()
 		count = record[ "count" ]
@@ -199,9 +207,39 @@ def test_large_input_nodes ( neo4j_container: Neo4jContainer, neo_driver: neo4j.
 		n_test_win_size = input_size // n_tests
 		for n_win in range ( 0, input_size, n_test_win_size ):
 			n_id = random.randint ( n_win, n_win + n_test_win_size - 1 )
-			result = session.run ( f"MATCH (n:TestNode {{ id: 'N{n_id}' }}) RETURN n" )
+			result = session.run ( f"MATCH (n:{label} {{ id: 'N{n_id}' }}) RETURN n" )
 			record = result.single()
 			assert_that ( record, f"Node N{n_id} is found in the database" ).is_not_none ()
+
+
+@pytest.mark.integration
+def test_large_graph ( neo4j_container: Neo4jContainer, neo_driver: neo4j.Driver ):
+	"""
+	Tests the loading of a whole (nodes + edges) large graph.
+	"""
+
+	# First, reuse the large node test
+	nodes_input_size = 25000
+	test_large_input_nodes ( neo4j_container, neo_driver, nodes_input_size, "LargeGraphNode" )
+
+	# Then do the same for edges
+	edges_input_size = 50000
+	edges_stream = ( edge for edge in (
+		json.dumps ( {
+			"type": "edge", "id": f"E{i}", "labels": ["TEST_EDGE"], "properties": {"index": [i]},
+			"from": f"N{random.randint(0, nodes_input_size-1)}", "to": f"N{random.randint(0, nodes_input_size-1)}"
+		}) 
+		for i in range ( edges_input_size )
+	))
+
+	async_neo_driver: neo4j.AsyncDriver = create_async_neo_driver ( neo4j_container )
+	n_edges = pg_jsonl_neo_loader ( 
+		pg_jsonl_source = edges_stream,
+		neo_driver = async_neo_driver,
+		do_nodes = False, do_edges = True
+	)
+
+	assert_that ( n_edges, "Count of loaded edges is correct" ).is_equal_to ( edges_input_size )
 
 
 @pytest.mark.integration
