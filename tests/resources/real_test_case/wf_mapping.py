@@ -1,6 +1,6 @@
 
 from ketl.core import ConstantTripleMapper, GraphTriple, IdentityValueConverter
-from ketl.tabmap.core import ColumnMapper, IdColumnValueMapper, RowTripleMapper, TabFileMapper, SparkDataFrameMapper
+from ketl.tabmap.core import ColumnTripleMapper, IdColumnValueMapper, RowTripleMapper, TabFileMapper, SparkDataFrameMapper
 from ketl.io.neoloader import NeoLoaderConfig, NeoLoaderPropertyConfig
 
 
@@ -27,7 +27,7 @@ def make_accession_mappers_for_source (
 			column_id = acc_col_id
 		),
 		row_mappers = [
-			ColumnMapper ( column_id = acc_col_id, property = "value" ),
+			   ColumnTripleMapper ( column_id = acc_col_id, property = "value" ),
 		],
 		const_prop_mappers = [
 			ConstantTripleMapper.for_type ( "Accession" ),

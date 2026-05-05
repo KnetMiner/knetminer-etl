@@ -9,7 +9,7 @@ from pyspark.sql.types import IntegerType, StringType
 from ketl.core import (ConstantTripleMapper, GraphTriple,
                        IdentityValueConverter)
 from ketl.spark.utils import assertDataFrameEqualX
-from ketl.tabmap.core import (ColumnMapper, ColumnValueMapper, IdColumnValueMapper,
+from ketl.tabmap.core import (ColumnTripleMapper, ColumnValueMapper, IdColumnValueMapper,
                               RowTripleMapper, RowValueMapper,
                               SparkDataFrameMapper, TabFileMapper)
 
@@ -60,8 +60,8 @@ class TestRowValueMapper:
 		relation_type = "encodes-protein"
 
 		type_map = ConstantTripleMapper.for_type ( relation_type )
-		from_map = ColumnMapper.for_from ( "gene accession" )
-		to_map = ColumnMapper.for_to ( "protein accession" )
+		from_map = ColumnTripleMapper.for_from ( "gene accession" )
+		to_map = ColumnTripleMapper.for_to ( "protein accession" )
 
 		edge_id_map = RowValueMapper.for_edge_id_auto (
 			property_mappers = [ type_map, from_map, to_map ],
@@ -194,9 +194,9 @@ class TestIdColumnMapper:
 			.raises ( ValueError )
 # /TestIdColumnMapper
 
-class TestColumnMapper:
+class TestColumnTripleMapper:
 	def test_basics ( self ):
-		cmap = ColumnMapper ( "name", "hasName" )
+		cmap = ColumnTripleMapper ( "name", "hasName" )
 		test_value = "Alice"
 		row = { "name": test_value, "age": 20, "foo": "bar" }
 		rec = cmap.triple ( "N001", row )
@@ -206,17 +206,17 @@ class TestColumnMapper:
 		assert_that ( rec.value, "Triple has correct value" ).is_equal_to ( f'"{test_value}"' )
 
 	def test_missing_column ( self ):
-		cmap = ColumnMapper ( "name", "hasName" )
+		cmap = ColumnTripleMapper ( "name", "hasName" )
 		row = { "age": 20, "foo": "bar" }
 		rec = cmap.triple ( "N001", row )
 		assert_that ( rec, "node_record() returns None for missing column" ).is_none ()
 		
 	def test_empty_row ( self ):
-		cmap = ColumnMapper ( "name", "hasName" )
+		cmap = ColumnTripleMapper ( "name", "hasName" )
 		row = {}
 		rec = cmap.triple ( "N001", row )
 		assert_that ( rec, "node_record() returns None for empty row" ).is_none ()
-# /TestColumnMapper
+# /TestColumnTripleMapper
 
 
 @pytest.mark.integration
@@ -232,8 +232,8 @@ class TestSparkDataFrameMapper:
 		df = spark_session.createDataFrame ( data )
 
 		id_mapper = IdColumnValueMapper ( "id" )
-		name_mapper = ColumnMapper ( "name", "hasName" )
-		age_mapper = ColumnMapper ( "age" )
+		name_mapper = ColumnTripleMapper ( "name", "hasName" )
+		age_mapper = ColumnTripleMapper ( "age" )
 		
 		row_mappers = [ name_mapper, age_mapper ]
 		
@@ -266,8 +266,8 @@ class TestSparkDataFrameMapper:
 		df = spark_session.createDataFrame ( data )
 
 		id_mapper = IdColumnValueMapper ( "id" )
-		name_mapper = ColumnMapper ( "name", "hasName" )
-		age_mapper = ColumnMapper ( "age" )
+		name_mapper = ColumnTripleMapper ( "name", "hasName" )
+		age_mapper = ColumnTripleMapper ( "age" )
 		col_mappers = [ name_mapper, age_mapper ]
 
 		type_mapper = ConstantTripleMapper.for_type ( "Person" )
@@ -392,8 +392,8 @@ class TestSparkDataFrameMapper:
 		df_mapper = SparkDataFrameMapper (
 			id_mapper = SparkDataFrameMapper.AutoEdgeId ( prefix = "test:" ),
 			row_mappers = [ 
-				ColumnMapper.for_from ( column_id = "gene accession" ),
-				ColumnMapper.for_to ( column_id = "protein accession" )
+				ColumnTripleMapper.for_from ( column_id = "gene accession" ),
+				ColumnTripleMapper.for_to ( column_id = "protein accession" )
 			],
 			const_prop_mappers = [ ConstantTripleMapper.for_type ( "encodes-protein" ) ]
 		)
@@ -435,13 +435,13 @@ class TestTabFileMapper:
 		# to map() below.
 		#
 		tb_mapper = TabFileMapper (
-			id_mapper = IdColumnValueMapper ( column_id = "accession" ),	
+			id_mapper = IdColumnValueMapper ( column_id = "accession" ),    
 			row_mappers = [
-				ColumnMapper ( column_id = "name", property = "hasGeneName" ),
-				ColumnMapper ( "accession", "hasAccession" ),
-				ColumnMapper ( "chromosome", "hasChromosomeId" ),
-				ColumnMapper ( "begin", "hasChromosomeBegin", spark_data_type = spark_data_type ),
-				ColumnMapper ( "end", "hasChromosomeEnd", spark_data_type = spark_data_type )
+				ColumnTripleMapper ( column_id = "name", property = "hasGeneName" ),
+				ColumnTripleMapper ( "accession", "hasAccession" ),
+				ColumnTripleMapper ( "chromosome", "hasChromosomeId" ),
+				ColumnTripleMapper ( "begin", "hasChromosomeBegin", spark_data_type = spark_data_type ),
+				ColumnTripleMapper ( "end", "hasChromosomeEnd", spark_data_type = spark_data_type )
 			],
 			const_prop_mappers = [
 				ConstantTripleMapper.for_type ( "Gene" ),
@@ -498,15 +498,15 @@ class TestTabFileMapper:
 
 	def test_inconsistent_mappers_on_same_row ( self, spark_session ):
 		tb_mapper = TabFileMapper (
-			id_mapper = IdColumnValueMapper ( column_id = "accession" ),	
+			id_mapper = IdColumnValueMapper ( column_id = "accession" ),    
 			row_mappers = [
-				ColumnMapper ( column_id = "name", property = "hasGeneName" ),
-				ColumnMapper ( "accession", "hasAccession" ),
-				ColumnMapper ( "chromosome", "hasChromosomeId" ),
-				ColumnMapper ( "begin", "hasChromosomeBegin", spark_data_type = IntegerType () ),
-				ColumnMapper ( "end", "hasChromosomeEnd", spark_data_type = IntegerType () ),
+				ColumnTripleMapper ( column_id = "name", property = "hasGeneName" ),
+				ColumnTripleMapper ( "accession", "hasAccession" ),
+				ColumnTripleMapper ( "chromosome", "hasChromosomeId" ),
+				ColumnTripleMapper ( "begin", "hasChromosomeBegin", spark_data_type = IntegerType () ),
+				ColumnTripleMapper ( "end", "hasChromosomeEnd", spark_data_type = IntegerType () ),
 				# add the same column mapped to a different type, to cause an error
-				ColumnMapper ( "begin", "hasChromosomeBeginStr", spark_data_type = StringType () )
+				ColumnTripleMapper ( "begin", "hasChromosomeBeginStr", spark_data_type = StringType () )
 			],
 			const_prop_mappers = [
 				ConstantTripleMapper.for_type ( "Gene" ),

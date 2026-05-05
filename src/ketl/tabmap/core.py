@@ -280,7 +280,7 @@ class ColumnValueMapper ( RowValueMapper ):
 	Column-oriented value mapper. 
 	
 	This is to be used to map a column value from a table row.
-	This basic mapper only returns the mapped value, see :class:`ketl.tabmap.ColumnMapper` for an extension
+	This basic mapper only returns the mapped value, see :class:`ketl.tabmap.ColumnTripleMapper` for an extension
 	that builds a :class:`ketl.GraphTriple`.
 
 	"""
@@ -404,11 +404,11 @@ class IdColumnValueMapper ( ColumnValueMapper ):
 # /IdColumnValueMapper
 
 
-class ColumnMapper ( ColumnValueMapper, RowTripleMapper ):
+class ColumnTripleMapper ( ColumnValueMapper, RowTripleMapper ):
 	"""
 	Column-oriented property mapper.
 
-	An extension of :class:`ketl.tabmap.ColumnValueMapper` that combine with :class:`ketl.tabmap.RowTripleMapper`
+	An extension of :class:`ketl.tabmap.ColumnValueMapper` that combines with :class:`ketl.tabmap.RowTripleMapper`
 	to build an entire triple out of a column value.
 	"""
 	def __init__ ( 
@@ -423,17 +423,16 @@ class ColumnMapper ( ColumnValueMapper, RowTripleMapper ):
 			self, column_id, value_converter, pre_serializers, spark_data_type 
 		)
 		self._init ( property if property else column_id )
-		
-	
+
 	@classmethod
 	def for_from ( 
 		cls,
 		column_id: str,
 		value_converter: ValueConverter | None = None,
 		pre_serializers: PreSerializers | None = None
-	) -> ColumnMapper:
+	) -> "ColumnTripleMapper":
 		"""
-		Factory method to create a :class:`ketl.tabmap.ColumnMapper` for the :attr:`ketl.GraphTriple.FROM_KEY` property, ie, 
+		Factory method to create a :class:`ketl.tabmap.ColumnTripleMapper` for the :attr:`ketl.GraphTriple.FROM_KEY` property, ie, 
 		a relationship source node pointer.
 
 		As for :class:`IdColumnValueMapper`, the default value converter is :class:`ketl.IdentityValueConverter`.
@@ -447,16 +446,16 @@ class ColumnMapper ( ColumnValueMapper, RowTripleMapper ):
 			value_converter = value_converter if value_converter else IdentityValueConverter ( pre_serializers ),
 			pre_serializers = pre_serializers if not value_converter else None
 		)
-	
+
 	@classmethod
 	def for_to (
 		cls,
 		column_id: str,
 		value_converter: ValueConverter | None = None,
 		pre_serializers: PreSerializers | None = None
-	) -> ColumnMapper:
+	) -> "ColumnTripleMapper":
 		"""
-		Factory method to create a :class:`ketl.tabmap.ColumnMapper` for the :attr:`ketl.GraphTriple.TO_KEY` property, ie, 
+		Factory method to create a :class:`ketl.tabmap.ColumnTripleMapper` for the :attr:`ketl.GraphTriple.TO_KEY` property, ie, 
 		a relationship destination node pointer.
 
 		As for :class:`IdColumnValueMapper`, the default value converter is :class:`ketl.IdentityValueConverter`.
@@ -470,7 +469,7 @@ class ColumnMapper ( ColumnValueMapper, RowTripleMapper ):
 			value_converter = value_converter if value_converter else IdentityValueConverter ( pre_serializers ),
 			pre_serializers = pre_serializers if not value_converter else None
 		)
-# /ColumnMapper
+# /ColumnTripleMapper
 
 
 class SparkDataFrameMapper:
@@ -480,8 +479,8 @@ class SparkDataFrameMapper:
 	This is the main class to map a Spark DataFrame into a set of KG node/relationship properties
 	(ie, triples).
 
-	It uses a :class:`ketl.tabmap.ColumnValueMapper` to build the triple ID, and a list of :class:`ketl.tabmap.ColumnMapper`
-	to build the node/relationshipt properties.
+	It uses a :class:`ketl.tabmap.ColumnValueMapper` to build the triple ID, and a list of :class:`ketl.tabmap.ColumnTripleMapper`
+	to build the node/relationship properties.
 	
 	The output is a new DataFrame with the three columns  
 	:py:attr:`ketl.GraphTriple.DATAFRAME_SCHEMA_LIST`.
@@ -511,7 +510,7 @@ class SparkDataFrameMapper:
 			the given prefix.
 			**WARNING**: these only makes sense for relationship/edge mappers, not for nodes.
 
-		@param column_mapper_list: a list of :class:`ketl.tabmap.ColumnMapper` to build the triple/relationship properties.
+		@param column_mapper_list: a list of :class:`ketl.tabmap.ColumnTripleMapper` to build the triple/relationship properties.
 		  The order of this must match the order of the columns in the input DataFrame.
 
 		@param const_properties: a set of constant properties to add to each triple set (ie, each node or relationship).
@@ -611,7 +610,7 @@ class TabFileMapper:
 		self,
 
 		id_mapper: RowValueMapper | SparkDataFrameMapper.AutoEdgeId | None,
-		row_mappers: list[ ColumnMapper ] = None,
+		row_mappers: list[ ColumnTripleMapper ] = None,
 		const_prop_mappers: list[ ConstantTripleMapper ] | None = None,
 
 		spark_options: Dict[str, Any] | None = None,
@@ -739,7 +738,7 @@ class TabFileMapper:
 	
 
 	@property
-	def row_mappers ( self ) -> list [ ColumnMapper ]:
+	def row_mappers ( self ) -> list [ ColumnTripleMapper ]:
 		"""
 		Convenience property to get the row mappers from the internal :class:`ketl.tabmap.SparkDataFrameMapper`.
 		"""

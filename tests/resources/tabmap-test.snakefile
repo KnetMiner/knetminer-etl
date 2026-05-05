@@ -9,8 +9,8 @@ from pyspark.sql.types import IntegerType
 from ketl.core import ConstantTripleMapper, PGElementType
 from ketl.io.core import pg_df_2_pg_jsonl, triples_2_pg_df
 from ketl.spark.utils import df_check_path, df_path
-from ketl.tabmap.core import (ColumnMapper, IdColumnValueMapper, SparkDataFrameMapper,
-                         TabFileMapper)
+from ketl.tabmap.core import (ColumnTripleMapper, IdColumnValueMapper, SparkDataFrameMapper,
+						 TabFileMapper)
 
 KETL_DATA = os.environ [ "KETL_DATA" ] # TODO
 KETL_IN = os.path.abspath ( workflow.basedir )
@@ -112,11 +112,11 @@ rule map_gene_tsv:
 		tb_mapper = TabFileMapper (
 			id_mapper = IdColumnValueMapper ( column_id = "accession" ),	
 			row_mappers = [
-				ColumnMapper ( column_id = "name", property = "hasGeneName" ),
-				ColumnMapper ( "accession", "hasAccession" ),
-				ColumnMapper ( "chromosome", "hasChromosomeId" ),
-				ColumnMapper ( "begin", "hasChromosomeBegin", spark_data_type = IntegerType () ),
-				ColumnMapper ( "end", "hasChromosomeEnd", spark_data_type = IntegerType () )
+				   ColumnTripleMapper ( column_id = "name", property = "hasGeneName" ),
+				   ColumnTripleMapper ( "accession", "hasAccession" ),
+				   ColumnTripleMapper ( "chromosome", "hasChromosomeId" ),
+				   ColumnTripleMapper ( "begin", "hasChromosomeBegin", spark_data_type = IntegerType () ),
+				   ColumnTripleMapper ( "end", "hasChromosomeEnd", spark_data_type = IntegerType () )
 			],
 			const_prop_mappers = [
 				ConstantTripleMapper.for_type ( "Gene" ),
