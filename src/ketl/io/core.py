@@ -88,7 +88,8 @@ def triples_2_pg_df (
 	)
 
 
-	# The result DataFrame, start from IDs, then join the other elements built above
+	# Build the result DataFrame. 
+	# Start from IDs, then join the other elements built above
 	#
 
 	result_df = triples_df.select ( "id" ).distinct()

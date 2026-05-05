@@ -1,11 +1,11 @@
 
-from ketl.core import ConstantPropertyMapper, GraphTriple, IdentityValueConverter
-from ketl.tabmap.core import ColumnMapper, IdColumnMapper, RowTripleMapperMixin, TabFileMapper, SparkDataFrameMapper
+from ketl.core import ConstantTripleMapper, GraphTriple, IdentityValueConverter
+from ketl.tabmap.core import ColumnMapper, IdColumnValueMapper, RowTripleMapper, TabFileMapper, SparkDataFrameMapper
 from ketl.io.neoloader import NeoLoaderConfig, NeoLoaderPropertyConfig
 
 
 def make_accession_mappers_for_source ( 
-	source_id: str, acc_col_id: str, source_id_mapper: IdColumnMapper 
+	source_id: str, acc_col_id: str, source_id_mapper: IdColumnValueMapper 
 ) -> tuple[TabFileMapper, TabFileMapper]:
 	"""
 	Helper to make a pair of :class:`TabFileMapper`(s), one that maps an accession column and a known 
@@ -22,7 +22,7 @@ def make_accession_mappers_for_source (
 
 	"""
 	acc_mapper = TabFileMapper (
-		id_mapper = IdColumnMapper.from_extractor ( 
+		id_mapper = IdColumnValueMapper.from_extractor ( 
 			extractor = lambda row: f"accession:{source_id}:{row[acc_col_id]}",
 			column_id = acc_col_id
 		),
@@ -30,8 +30,8 @@ def make_accession_mappers_for_source (
 			ColumnMapper ( column_id = acc_col_id, property = "value" ),
 		],
 		const_prop_mappers = [
-			ConstantPropertyMapper.for_type ( "Accession" ),
-			ConstantPropertyMapper ( property = "source", constant_value = source_id )
+			ConstantTripleMapper.for_type ( "Accession" ),
+			ConstantTripleMapper ( property = "source", constant_value = source_id )
 		]
 	)
 
@@ -39,11 +39,11 @@ def make_accession_mappers_for_source (
 		id_mapper = SparkDataFrameMapper.AutoEdgeId (),
 		const_prop_mappers = [
 			# TODO: check AgriSchemas
-			ConstantPropertyMapper.for_type ( "hasAccession" ),
+			ConstantTripleMapper.for_type ( "hasAccession" ),
 		],
 		row_mappers = [
-			RowTripleMapperMixin.for_from ( source_id_mapper ),
-			RowTripleMapperMixin.for_to ( acc_mapper.id_mapper )
+			RowTripleMapper.for_from ( source_id_mapper ),
+			RowTripleMapper.for_to ( acc_mapper.id_mapper )
 		]
 	)
 
@@ -55,10 +55,10 @@ def make_accession_mappers_for_source (
 E2U_ENSEMBL_GENE_MAPPER = TabFileMapper (
 	# The node ID is usually a prefix + the accession for this type. The prefix is often needed
 	# because the same accessions are used for multiple related types, eg, genes and proteins.
-	id_mapper = IdColumnMapper.for_node_id ( node_type = "gene", column_id = "ENSEMBL ID" ),
+	id_mapper = IdColumnValueMapper.for_node_id ( node_type = "gene", column_id = "ENSEMBL ID" ),
 	const_prop_mappers = [ 
-		ConstantPropertyMapper.for_type ( "Gene" ),
-		ConstantPropertyMapper ( property = "dataSources", constant_value = "ENSEMBL-Plants" ),
+		ConstantTripleMapper.for_type ( "Gene" ),
+		ConstantTripleMapper ( property = "dataSources", constant_value = "ENSEMBL-Plants" ),
 	]
 )
 """
@@ -80,11 +80,11 @@ E2U_ENSEMBL_GENE_ACCESSION_MAPPERS = make_accession_mappers_for_source (
 E2U_ENSEMBL_PROTEIN_MAPPER = TabFileMapper (
 	# The node ID is usually a prefix + the accession for this type. The prefix is often needed
 	# because the same accessions are used for multiple related types, eg, genes and proteins.
-	id_mapper = IdColumnMapper.for_node_id ( node_type = "protein", column_id = "UniProt ID" ),
+	id_mapper = IdColumnValueMapper.for_node_id ( node_type = "protein", column_id = "UniProt ID" ),
 	const_prop_mappers = [ 
-		ConstantPropertyMapper.for_type ( "Protein" ),
-		ConstantPropertyMapper ( property = "dataSources", constant_value = "ENSEMBL-Plants" ),
-		ConstantPropertyMapper ( property = "dataSources", constant_value = "TAIR" )
+		ConstantTripleMapper.for_type ( "Protein" ),
+		ConstantTripleMapper ( property = "dataSources", constant_value = "ENSEMBL-Plants" ),
+		ConstantTripleMapper ( property = "dataSources", constant_value = "TAIR" )
 	]
 )
 """
@@ -108,13 +108,13 @@ E2U_GENE2PROTEIN_MAPPER = TabFileMapper (
 	id_mapper = SparkDataFrameMapper.AutoEdgeId (),
 	row_mappers = [
 		# endpoint ID mappers can often be reused
-		RowTripleMapperMixin.for_from ( E2U_ENSEMBL_GENE_MAPPER.id_mapper ),
-		RowTripleMapperMixin.for_to ( E2U_ENSEMBL_PROTEIN_MAPPER.id_mapper ),
+		RowTripleMapper.for_from ( E2U_ENSEMBL_GENE_MAPPER.id_mapper ),
+		RowTripleMapper.for_to ( E2U_ENSEMBL_PROTEIN_MAPPER.id_mapper ),
 	],
 	const_prop_mappers = [ 
-		ConstantPropertyMapper.for_type ( "encodesProtein" ),
-		ConstantPropertyMapper ( property = "dataSources", constant_value = "ENSEMBL Plants" ),
-		ConstantPropertyMapper ( property = "dataSources", constant_value = "TAIR" )
+		ConstantTripleMapper.for_type ( "encodesProtein" ),
+		ConstantTripleMapper ( property = "dataSources", constant_value = "ENSEMBL Plants" ),
+		ConstantTripleMapper ( property = "dataSources", constant_value = "TAIR" )
 	]
 )
 """

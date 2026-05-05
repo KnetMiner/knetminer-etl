@@ -11,15 +11,15 @@ from pyspark.sql.functions import explode, udf
 from pyspark.sql.types import (ArrayType, DataType, StringType, StructField,
                                StructType)
 
-from ketl.core import (ConstantPropertyMapper, GraphTriple,
-                       IdentityValueConverter, Mapper, PreSerializers,
+from ketl.core import (ConstantTripleMapper, GraphTriple,
+                       IdentityValueConverter, ValueMapper, PreSerializers,
                        PropertyMapperMixin, ValueConverter)
 from ketl.spark.utils import df_save
 
 log = logging.getLogger ( __name__ )
 
 
-class RowValueMapper ( Mapper ):
+class RowValueMapper ( ValueMapper ):
 	"""
 	Row-oriented value mapper.
 
@@ -39,7 +39,7 @@ class RowValueMapper ( Mapper ):
 		  like :class:`ketl.tabmap.SparkDataFrameMapper`, which need to know which columns to select from 
 			an input DataFrame.
 		
-		- value_converter, pre_serializers, spark_data_type: see :class:`ketl.Mapper`.
+		- value_converter, pre_serializers, spark_data_type: see :class:`ketl.ValueMapper`.
 		"""
 
 		super().__init__ ( value_converter, pre_serializers, spark_data_type )
@@ -88,7 +88,7 @@ class RowValueMapper ( Mapper ):
 	@classmethod
 	def for_edge_id_auto (
 		cls,
-		property_mappers: list [ ConstantPropertyMapper | PropertyMapperMixin ],
+		property_mappers: list [ ConstantTripleMapper | PropertyMapperMixin ],
 		prefix: str = None
 	) -> RowValueMapper:
 		"""
@@ -104,11 +104,11 @@ class RowValueMapper ( Mapper ):
 			return mapper
 		
 		def extractor ( 
-			mapper: ConstantPropertyMapper | PropertyMapperMixin, row: dict [ str, Any ]
+			mapper: ConstantTripleMapper | PropertyMapperMixin, row: dict [ str, Any ]
 		) -> str:
-			if isinstance ( mapper, ConstantPropertyMapper ):
+			if isinstance ( mapper, ConstantTripleMapper ):
 				return mapper.value ()
-			elif isinstance ( mapper, RowTripleMapperMixin ):
+			elif isinstance ( mapper, RowTripleMapper ):
 				return mapper.value ( row )
 			raise ValueError ( f"RowValueMapper.for_edge_id_auto: unsupported mapper type {type(mapper)}" )
 
@@ -124,7 +124,7 @@ class RowValueMapper ( Mapper ):
 
 		# Required in the final result
 		col_ids = [ 
-			col for pm in ( type_map, from_map, to_map ) if isinstance ( pm, RowTripleMapperMixin )
+			col for pm in ( type_map, from_map, to_map ) if isinstance ( pm, RowTripleMapper )
 			for col in pm.column_ids
 		]
 
@@ -170,8 +170,8 @@ class RowValueMapper ( Mapper ):
 		* :param to_column_id: the column ID that contains the destination node ID
 		* :param prefix: an optional prefix to add to the edge ID
 	
-		* For the other parameters, see :class:`ketl.Mapper`.
-			As for :class:`IdColumnMapper`, the default value converter is :class:`ketl.IdentityValueConverter`.
+		* For the other parameters, see :class:`ketl.ValueMapper`.
+			As for :class:`IdColumnValueMapper`, the default value converter is :class:`ketl.IdentityValueConverter`.
 		"""
 		return cls.from_extractor (
 			extractor = lambda row: cls.build_edge_id (
@@ -192,7 +192,7 @@ class RowValueMapper ( Mapper ):
 # /RowValueMapper
 
 
-class RowTripleMapperMixin ( RowValueMapper, PropertyMapperMixin ):
+class RowTripleMapper ( RowValueMapper, PropertyMapperMixin ):
 	"""
 	Row-oriented property mapper.
 	
@@ -219,11 +219,11 @@ class RowTripleMapperMixin ( RowValueMapper, PropertyMapperMixin ):
 		value_converter: ValueConverter | None = None,
 		pre_serializers: PreSerializers | None = None,
 		spark_data_type: DataType | None = None
-	) -> RowTripleMapperMixin:
+	) -> RowTripleMapper:
 		"""
 		TODO: comment me!
 		"""
-		class ExtractorRowTripleMapper ( RowTripleMapperMixin ):
+		class ExtractorRowTripleMapper ( RowTripleMapper ):
 			def __init__ ( self ):
 				super().__init__ ( 
 					column_ids, value_converter, pre_serializers, spark_data_type
@@ -242,7 +242,7 @@ class RowTripleMapperMixin ( RowValueMapper, PropertyMapperMixin ):
 		cls, 
 		extractor: callable [ dict [ str, Any ], Any ] | RowValueMapper,
 		column_ids: list [ str ] | None = None
-	) -> RowTripleMapperMixin:
+	) -> RowTripleMapper:
 		"""
 		TODO: comment me!
 		TODO: test me!
@@ -260,7 +260,7 @@ class RowTripleMapperMixin ( RowValueMapper, PropertyMapperMixin ):
 		cls, 
 		extractor: Callable [ [ dict[ str, Any ] ], Any ] | RowValueMapper,
 		column_ids: list [ str ] | None = None
-	) -> RowTripleMapperMixin:
+	) -> RowTripleMapper:
 		"""
 		TODO: comment me!
 		TODO: test me!
@@ -272,7 +272,7 @@ class RowTripleMapperMixin ( RowValueMapper, PropertyMapperMixin ):
 		return cls.from_extractor ( 
 			actual_extractor, GraphTriple.TO_KEY, column_ids, IdentityValueConverter ()
 		)
-# /RowTripleMapperMixin
+# /RowTripleMapper
 
 
 class ColumnValueMapper ( RowValueMapper ):
@@ -318,7 +318,7 @@ class ColumnValueMapper ( RowValueMapper ):
 # /ColumnValueMapper
 
 
-class IdColumnMapper ( ColumnValueMapper ):
+class IdColumnValueMapper ( ColumnValueMapper ):
 	"""
 	A :class:`ketl.tabmap.ColumnValueMapper` to be used for mapping the values of a column to triple IDs.
 
@@ -333,7 +333,7 @@ class IdColumnMapper ( ColumnValueMapper ):
 		pre_serializers: PreSerializers | None = None,
 		spark_data_type: DataType | None = None
 	):
-		# As explained in Mapper.__init__, pre-serialisers need to be checked against not being
+		# As explained in ValueMapper.__init__, pre-serialisers need to be checked against not being
 		# added twice.
 		super().__init__ ( 
 			column_id, 
@@ -344,7 +344,7 @@ class IdColumnMapper ( ColumnValueMapper ):
 
 	def value ( self, row_dict: dict [ str, Any ] ) -> str:
 		v = super ().value ( row_dict )
-		if not v: raise ValueError ( f"IdColumnMapper: null/empty ID value for column '{self.column}' in row {row_dict}" )
+		if not v: raise ValueError ( f"IdColumnValueMapper: null/empty ID value for column '{self.column}' in row {row_dict}" )
 		return v
 	
 
@@ -380,12 +380,12 @@ class IdColumnMapper ( ColumnValueMapper ):
 		spark_data_type: DataType | None = None
 	) -> RowValueMapper:
 		"""
-		Helper to build a :class:`ketl.tabmap.IdColumnMapper` for node IDs, by prefixing a column value with the node type and
+		Helper to build a :class:`ketl.tabmap.IdColumnValueMapper` for node IDs, by prefixing a column value with the node type and
 		other options.
 		"""
 
 		return cls.from_extractor (
-			extractor = lambda row: IdColumnMapper.build_node_id ( node_type, row[column_id], prefix ),
+			extractor = lambda row: IdColumnValueMapper.build_node_id ( node_type, row[column_id], prefix ),
 			column_id = column_id,
 			value_converter = value_converter,
 			pre_serializers = pre_serializers,
@@ -401,10 +401,10 @@ class IdColumnMapper ( ColumnValueMapper ):
 		return f"{prefix}{node_type}:{node_id}"
 
 
-# /IdColumnMapper
+# /IdColumnValueMapper
 
 
-class ColumnMapper ( ColumnValueMapper, RowTripleMapperMixin ):
+class ColumnMapper ( ColumnValueMapper, RowTripleMapper ):
 	"""
 	Column-oriented property mapper.
 
@@ -436,9 +436,9 @@ class ColumnMapper ( ColumnValueMapper, RowTripleMapperMixin ):
 		Factory method to create a :class:`ketl.tabmap.ColumnMapper` for the :attr:`ketl.GraphTriple.FROM_KEY` property, ie, 
 		a relationship source node pointer.
 
-		As for :class:`IdColumnMapper`, the default value converter is :class:`ketl.IdentityValueConverter`.
+		As for :class:`IdColumnValueMapper`, the default value converter is :class:`ketl.IdentityValueConverter`.
 
-		Note that this doesn't reuse the same method from :class:`RowTripleMapperMixin`, since a simpler 
+		Note that this doesn't reuse the same method from :class:`RowTripleMapper`, since a simpler 
 		construct is used here.
 		"""
 		return cls ( 
@@ -459,9 +459,9 @@ class ColumnMapper ( ColumnValueMapper, RowTripleMapperMixin ):
 		Factory method to create a :class:`ketl.tabmap.ColumnMapper` for the :attr:`ketl.GraphTriple.TO_KEY` property, ie, 
 		a relationship destination node pointer.
 
-		As for :class:`IdColumnMapper`, the default value converter is :class:`ketl.IdentityValueConverter`.
+		As for :class:`IdColumnValueMapper`, the default value converter is :class:`ketl.IdentityValueConverter`.
 
-		Note that this doesn't reuse the same method from :class:`RowTripleMapperMixin`, since a simpler 
+		Note that this doesn't reuse the same method from :class:`RowTripleMapper`, since a simpler 
 		construct is used here.
 		"""
 		return cls (
@@ -502,8 +502,8 @@ class SparkDataFrameMapper:
 	def __init__ ( 
 		self, 
 		id_mapper: RowValueMapper | AutoEdgeId | None, 
-		row_mappers: list[ RowTripleMapperMixin ] = None,
-		const_prop_mappers: list[ ConstantPropertyMapper ] = None ):
+		row_mappers: list[ RowTripleMapper ] = None,
+		const_prop_mappers: list[ ConstantTripleMapper ] = None ):
 		"""
 		@param id_mapper: the :class:`ketl.tabmap.ColumnValueMapper` to build the triple ID.
 		  If it's None, it will use :meth:`ketl.tabmap.RowValueMapper.for_edge_id_auto`.
@@ -612,7 +612,7 @@ class TabFileMapper:
 
 		id_mapper: RowValueMapper | SparkDataFrameMapper.AutoEdgeId | None,
 		row_mappers: list[ ColumnMapper ] = None,
-		const_prop_mappers: list[ ConstantPropertyMapper ] | None = None,
+		const_prop_mappers: list[ ConstantTripleMapper ] | None = None,
 
 		spark_options: Dict[str, Any] | None = None,
 	):
@@ -656,9 +656,9 @@ class TabFileMapper:
 
 		## Notes
 
-		* The "inferSchema" option and :attr:`ketl.Mapper.spark_data_type`: independently of the value of this option,
+		* The "inferSchema" option and :attr:`ketl.ValueMapper.spark_data_type`: independently of the value of this option,
 		  we always load the columns in the mappers only, discarding any other columns that may be in the file.
-			If this option is false, we additionally use the :attr:`ketl.Mapper.spark_data_type` attributes to
+			If this option is false, we additionally use the :attr:`ketl.ValueMapper.spark_data_type` attributes to
 			cast the original columns to the desired types. If a column mapper doesn't have this attribute set,
 			we leave the original column untouched (ie, loaded by Spark with its defaults).
 
@@ -731,7 +731,7 @@ class TabFileMapper:
 	# /map
 
 	@property
-	def id_mapper ( self ) -> IdColumnMapper:
+	def id_mapper ( self ) -> IdColumnValueMapper:
 		"""
 		Convenience property to get the ID mapper from the internal :class:`ketl.tabmap.SparkDataFrameMapper`.
 		"""
@@ -746,7 +746,7 @@ class TabFileMapper:
 		return self.data_frame_mapper.row_mappers
 	
 	@property
-	def const_prop_mappers ( self ) -> list [ ConstantPropertyMapper ]:
+	def const_prop_mappers ( self ) -> list [ ConstantTripleMapper ]:
 		"""
 		Convenience property to get the constant property mappers from the internal :class:`ketl.tabmap.SparkDataFrameMapper`.
 		"""

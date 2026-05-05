@@ -3,18 +3,18 @@ A sample/test config of tab mappers, to be used in an ETL workflow.
 See tests/resources/tabmap-test.snakefile
 
 """
-from ketl.core import ConstantPropertyMapper
-from ketl.tabmap.core import ColumnMapper, IdColumnMapper, TabFileMapper
+from ketl.core import ConstantTripleMapper
+from ketl.tabmap.core import ColumnMapper, IdColumnValueMapper, TabFileMapper
 
 PROTEINS_MAPPER = TabFileMapper (
-	id_mapper = IdColumnMapper ( column_id = "accession" ),	
+	id_mapper = IdColumnValueMapper ( column_id = "accession" ),	
 	row_mappers = [
 		ColumnMapper ( column_id = "name", property = "hasProteinName" ),
 		ColumnMapper ( "accession", "hasAccession" ),
 	],
 	const_prop_mappers = [
-		ConstantPropertyMapper.for_type ( "Protein" ),
-		ConstantPropertyMapper ( property = "source", constant_value = "SnakeTest" )
+		ConstantTripleMapper.for_type ( "Protein" ),
+		ConstantTripleMapper ( property = "source", constant_value = "SnakeTest" )
 	],
 	spark_options = { "inferSchema": False }
 )
@@ -28,8 +28,8 @@ ENCODING_MAPPER = TabFileMapper (
 	],
 	const_prop_mappers = [
 		# The PG relationship type
-		ConstantPropertyMapper.for_type ( "encodes-protein" ),
-		ConstantPropertyMapper ( property = "source", constant_value = "SnakeTest" )
+		ConstantTripleMapper.for_type ( "encodes-protein" ),
+		ConstantTripleMapper ( property = "source", constant_value = "SnakeTest" )
 	],
 	spark_options = { "inferSchema": False }	
 )

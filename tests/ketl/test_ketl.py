@@ -2,7 +2,7 @@ import logging
 
 from assertpy import assert_that
 
-from ketl.core import (ConstantPropertyMapper, GraphProperty, GraphTriple,
+from ketl.core import (ConstantTripleMapper, GraphProperty, GraphTriple,
                        JSONBasedValueConverter)
 
 log = logging.getLogger ( __name__ )
@@ -97,7 +97,7 @@ class TestConstantPropertyMapper:
 	def test_basics ( self ):
 		const_prop = "hasHello"
 		const_value = "Hello, World!"
-		const_mapper = ConstantPropertyMapper ( const_prop, const_value )
+		const_mapper = ConstantTripleMapper ( const_prop, const_value )
 
 		triple_id = "N001"
 		triple = const_mapper.triple ( triple_id )
@@ -111,7 +111,7 @@ class TestConstantPropertyMapper:
 		"""TODO: Does this edge case make sense?"""
 		const_prop = "hasNothing"
 		const_value = None
-		const_mapper = ConstantPropertyMapper ( const_prop, const_value )
+		const_mapper = ConstantTripleMapper ( const_prop, const_value )
 
 		triple_id = "N001"
 		triple = const_mapper.triple ( triple_id )
@@ -121,7 +121,7 @@ class TestConstantPropertyMapper:
 	def test_empty_string_value ( self ):
 		const_prop = "hasEmptyString"
 		const_value = ""
-		const_mapper = ConstantPropertyMapper ( const_prop, const_value )
+		const_mapper = ConstantTripleMapper ( const_prop, const_value )
 
 		triple_id = "N001"
 		triple = const_mapper.triple ( triple_id )
@@ -130,7 +130,7 @@ class TestConstantPropertyMapper:
 
 	def test_for_type_helper ( self ):
 		type_label = "TestType"
-		const_mapper = ConstantPropertyMapper.for_type ( type_label )
+		const_mapper = ConstantTripleMapper.for_type ( type_label )
 
 		triple_id = "N001"
 		triple = const_mapper.triple ( triple_id )

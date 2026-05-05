@@ -6,10 +6,10 @@ from ketl.tabmap.sample_config import ENCODING_MAPPER, PROTEINS_MAPPER
 from pyspark.sql import SparkSession
 from pyspark.sql.types import IntegerType
 
-from ketl.core import ConstantPropertyMapper, PGElementType
+from ketl.core import ConstantTripleMapper, PGElementType
 from ketl.io.core import pg_df_2_pg_jsonl, triples_2_pg_df
 from ketl.spark.utils import df_check_path, df_path
-from ketl.tabmap.core import (ColumnMapper, IdColumnMapper, SparkDataFrameMapper,
+from ketl.tabmap.core import (ColumnMapper, IdColumnValueMapper, SparkDataFrameMapper,
                          TabFileMapper)
 
 KETL_DATA = os.environ [ "KETL_DATA" ] # TODO
@@ -110,7 +110,7 @@ rule map_gene_tsv:
 		
 		"""
 		tb_mapper = TabFileMapper (
-			id_mapper = IdColumnMapper ( column_id = "accession" ),	
+			id_mapper = IdColumnValueMapper ( column_id = "accession" ),	
 			row_mappers = [
 				ColumnMapper ( column_id = "name", property = "hasGeneName" ),
 				ColumnMapper ( "accession", "hasAccession" ),
@@ -119,8 +119,8 @@ rule map_gene_tsv:
 				ColumnMapper ( "end", "hasChromosomeEnd", spark_data_type = IntegerType () )
 			],
 			const_prop_mappers = [
-				ConstantPropertyMapper.for_type ( "Gene" ),
-				ConstantPropertyMapper ( property = "source", constant_value = "SnakeTest" )
+				ConstantTripleMapper.for_type ( "Gene" ),
+				ConstantTripleMapper ( property = "source", constant_value = "SnakeTest" )
 			],
 			spark_options = { "inferSchema": False }
 		)

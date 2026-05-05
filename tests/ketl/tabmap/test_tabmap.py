@@ -6,11 +6,11 @@ from assertpy import assert_that
 from pyspark.sql import DataFrame
 from pyspark.sql.types import IntegerType, StringType
 
-from ketl.core import (ConstantPropertyMapper, GraphTriple,
+from ketl.core import (ConstantTripleMapper, GraphTriple,
                        IdentityValueConverter)
 from ketl.spark.utils import assertDataFrameEqualX
-from ketl.tabmap.core import (ColumnMapper, ColumnValueMapper, IdColumnMapper,
-                              RowTripleMapperMixin, RowValueMapper,
+from ketl.tabmap.core import (ColumnMapper, ColumnValueMapper, IdColumnValueMapper,
+                              RowTripleMapper, RowValueMapper,
                               SparkDataFrameMapper, TabFileMapper)
 
 log = logging.getLogger ( __name__ )
@@ -59,7 +59,7 @@ class TestRowValueMapper:
 	def test_for_edge_id_auto ( self, prefix ):
 		relation_type = "encodes-protein"
 
-		type_map = ConstantPropertyMapper.for_type ( relation_type )
+		type_map = ConstantTripleMapper.for_type ( relation_type )
 		from_map = ColumnMapper.for_from ( "gene accession" )
 		to_map = ColumnMapper.for_to ( "protein accession" )
 
@@ -87,7 +87,7 @@ class TestRowTripleMapperMixin:
 		triple_id = "edge1"
 		row = { "gene accession": "gene001", "protein accession": "prot001" }
 
-		mapper = RowTripleMapperMixin.from_extractor (
+		mapper = RowTripleMapper.from_extractor (
 			extractor = extractor,
 			property = prop,
 			column_ids = [ "gene accession", "protein accession" ],
@@ -102,7 +102,7 @@ class TestRowTripleMapperMixin:
 	def test_for_from ( self ):
 		extractor = lambda row: f"ENSEMBL:{row [ 'gene accession' ].upper ()}"
 		
-		mapper = RowTripleMapperMixin.for_from (
+		mapper = RowTripleMapper.for_from (
 			extractor = extractor,
 			column_ids = [ "gene accession" ]
 		)
@@ -119,7 +119,7 @@ class TestRowTripleMapperMixin:
 	def test_for_to ( self ):
 		extractor = lambda row: f"UNIPROT:{row [ 'protein accession' ].upper ()}"
 		
-		mapper = RowTripleMapperMixin.for_to (
+		mapper = RowTripleMapper.for_to (
 			extractor = extractor,
 			column_ids = [ "protein accession" ]
 		)
@@ -175,20 +175,20 @@ class TestColumnValueMapper:
 
 class TestIdColumnMapper:
 	def test_basics ( self ):
-		idmap = IdColumnMapper ( "id" )
+		idmap = IdColumnValueMapper ( "id" )
 		test_id = "N001"
 		row = { "id": test_id, "name": "Alice" }
 		v = idmap.value ( row )
 		assert_that ( v, "value() returns correct ID" ).is_equal_to ( test_id )
 
 	def test_missing_column ( self ):
-		idmap = IdColumnMapper ( "id" )
+		idmap = IdColumnValueMapper ( "id" )
 		row = { "name": "Alice" }
 		assert_that ( lambda: idmap.value ( row ), "value() fails with missing column" )\
 			.raises ( ValueError )
 		
 	def test_empty_value ( self ):
-		idmap = IdColumnMapper ( "id" )
+		idmap = IdColumnValueMapper ( "id" )
 		row = { "id": "", "name": "Alice" }
 		assert_that ( lambda: idmap.value ( row ), "value() fails with empty ID" )\
 			.raises ( ValueError )
@@ -231,7 +231,7 @@ class TestSparkDataFrameMapper:
 		]
 		df = spark_session.createDataFrame ( data )
 
-		id_mapper = IdColumnMapper ( "id" )
+		id_mapper = IdColumnValueMapper ( "id" )
 		name_mapper = ColumnMapper ( "name", "hasName" )
 		age_mapper = ColumnMapper ( "age" )
 		
@@ -265,13 +265,13 @@ class TestSparkDataFrameMapper:
 		]
 		df = spark_session.createDataFrame ( data )
 
-		id_mapper = IdColumnMapper ( "id" )
+		id_mapper = IdColumnValueMapper ( "id" )
 		name_mapper = ColumnMapper ( "name", "hasName" )
 		age_mapper = ColumnMapper ( "age" )
 		col_mappers = [ name_mapper, age_mapper ]
 
-		type_mapper = ConstantPropertyMapper.for_type ( "Person" )
-		source_mapper = ConstantPropertyMapper ( "source", "TestDataset" )
+		type_mapper = ConstantTripleMapper.for_type ( "Person" )
+		source_mapper = ConstantTripleMapper ( "source", "TestDataset" )
 		const_mappers = [ type_mapper, source_mapper ]
 		
 		df_mapper = SparkDataFrameMapper ( id_mapper, col_mappers, const_mappers )
@@ -326,14 +326,14 @@ class TestSparkDataFrameMapper:
 			to_column_id = "protein accession"
 		)
 
-		type_mapper = ConstantPropertyMapper.for_type ( "encodes-protein" )
+		type_mapper = ConstantTripleMapper.for_type ( "encodes-protein" )
 
-		from_mapper = RowTripleMapperMixin.for_from (
+		from_mapper = RowTripleMapper.for_from (
 			lambda row: f"ENSEMBL:{row['gene accession']}",
 			[ "gene accession" ]
 		)
 
-		to_mapper = RowTripleMapperMixin.for_to (
+		to_mapper = RowTripleMapper.for_to (
 			lambda row: f"UNIPROT:{row['protein accession']}",
 			[ "protein accession" ]
 		)
@@ -344,7 +344,7 @@ class TestSparkDataFrameMapper:
 			ref = row.get ( "reference", None )
 			return f"PMID:{ref}" if ref else None
 
-		pmid_mapper = RowTripleMapperMixin.from_extractor (
+		pmid_mapper = RowTripleMapper.from_extractor (
 			extractor = pmid_extractor,
 			property = "hasPMID",
 			column_ids = [ "reference" ]
@@ -374,7 +374,7 @@ class TestSparkDataFrameMapper:
 		# Note: contains_only() with lists was giving some error about string formatting
 		# (assertpy bug?)
 		#
-		assert_that ( mapped_triples, "Mapper triples are as expected" )\
+		assert_that ( mapped_triples, "ValueMapper triples are as expected" )\
 			.is_equal_to ( expected_triples )
 	# /test_from_extractor_row_mapper
 		
@@ -395,7 +395,7 @@ class TestSparkDataFrameMapper:
 				ColumnMapper.for_from ( column_id = "gene accession" ),
 				ColumnMapper.for_to ( column_id = "protein accession" )
 			],
-			const_prop_mappers = [ ConstantPropertyMapper.for_type ( "encodes-protein" ) ]
+			const_prop_mappers = [ ConstantTripleMapper.for_type ( "encodes-protein" ) ]
 		)
 
 		triples_df = df_mapper.map ( df )
@@ -435,7 +435,7 @@ class TestTabFileMapper:
 		# to map() below.
 		#
 		tb_mapper = TabFileMapper (
-			id_mapper = IdColumnMapper ( column_id = "accession" ),	
+			id_mapper = IdColumnValueMapper ( column_id = "accession" ),	
 			row_mappers = [
 				ColumnMapper ( column_id = "name", property = "hasGeneName" ),
 				ColumnMapper ( "accession", "hasAccession" ),
@@ -444,8 +444,8 @@ class TestTabFileMapper:
 				ColumnMapper ( "end", "hasChromosomeEnd", spark_data_type = spark_data_type )
 			],
 			const_prop_mappers = [
-				ConstantPropertyMapper.for_type ( "Gene" ),
-				ConstantPropertyMapper ( property = "source", constant_value = "TestTSV" )
+				ConstantTripleMapper.for_type ( "Gene" ),
+				ConstantTripleMapper ( property = "source", constant_value = "TestTSV" )
 			],
 			spark_options = { "inferSchema": is_infer_schema }
 		)
@@ -498,7 +498,7 @@ class TestTabFileMapper:
 
 	def test_inconsistent_mappers_on_same_row ( self, spark_session ):
 		tb_mapper = TabFileMapper (
-			id_mapper = IdColumnMapper ( column_id = "accession" ),	
+			id_mapper = IdColumnValueMapper ( column_id = "accession" ),	
 			row_mappers = [
 				ColumnMapper ( column_id = "name", property = "hasGeneName" ),
 				ColumnMapper ( "accession", "hasAccession" ),
@@ -509,8 +509,8 @@ class TestTabFileMapper:
 				ColumnMapper ( "begin", "hasChromosomeBeginStr", spark_data_type = StringType () )
 			],
 			const_prop_mappers = [
-				ConstantPropertyMapper.for_type ( "Gene" ),
-				ConstantPropertyMapper ( property = "source", constant_value = "TestTSV" )
+				ConstantTripleMapper.for_type ( "Gene" ),
+				ConstantTripleMapper ( property = "source", constant_value = "TestTSV" )
 			],
 			# spark_options = { "inferSchema": True } should be implicit
 		)

@@ -225,7 +225,7 @@ class JSONBasedValueConverter ( ValueConverter ):
 
 
 
-class Mapper ( ABC ):
+class ValueMapper ( ABC ):
 	"""
 	Abstract root class for KETL mappers.
 
@@ -255,7 +255,7 @@ class Mapper ( ABC ):
 		This applies to subclasses too, that is, your initialisation should work like this:
 
 		```python
-		class MyMapper ( Mapper ):
+		class MyMapper ( ValueMapper ):
 			def __init__ ( self ):
 				super().__init__ (
 					value_converter if value_converter else MyValueConverter ( pre_serializers ),
@@ -302,9 +302,9 @@ class PropertyMapperMixin ( ABC ):
 		self.property = property
 
 
-class ConstantPropertyMapper ( Mapper, PropertyMapperMixin ):
+class ConstantTripleMapper ( ValueMapper, PropertyMapperMixin ):
 	"""
-	A :class:`ketl.Mapper` to add constant value properties to a knowledge graph.
+	A :class:`ketl.ValueMapper` to add constant value properties to a knowledge graph.
 
 	An example of where this is useful is when you are generating nodes or relationships all 
 	having the same :py:attr:`ketl.GraphProperty.TYPE_KEY`.
@@ -315,7 +315,7 @@ class ConstantPropertyMapper ( Mapper, PropertyMapperMixin ):
 	## Attributes
 	- `property (str)`: The property key/name.
 	- `constant_value (Any)`: The constant value to use to generate constant properties.
-	- `value_converter (ValueConverter)`: see :class:`ketl.Mapper`.
+	- `value_converter (ValueConverter)`: see :class:`ketl.ValueMapper`.
 	"""
 	def __init__ (
 		self,
@@ -345,14 +345,14 @@ class ConstantPropertyMapper ( Mapper, PropertyMapperMixin ):
 	def value ( self ) -> str | None:
 		"""
 		Returns the constant value, after the expected serialisation of the configured :attr:`value_converter`,
-		which is obtained through :meth:`ketl.Mapper.serialize()`.
+		which is obtained through :meth:`ketl.ValueMapper.serialize()`.
 		"""
 		return self.serialize ( self.constant_value )
 	
 	@classmethod
 	def for_type ( cls, type_value: str ):
 		"""
-		Helper to build a :class:`ketl.ConstantPropertyMapper` for the :py:attr:`ketl.GraphTriple.TYPE_KEY` property,
+		Helper to build a :class:`ketl.ConstantTripleMapper` for the :py:attr:`ketl.GraphTriple.TYPE_KEY` property,
 		that is, for a node/edge label/type.
 
 		We use the :class:`ketl.IdentityValueConverter` here, since types aren't properties and tools
