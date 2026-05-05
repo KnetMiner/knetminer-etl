@@ -90,8 +90,9 @@ class ValueConverter ( ABC ):
 	"""
 	KnetMiner ETL value converter base class.
 
-	A value converter is used in the the ETL to convert a value from a data source into a string representation,
-	as it's required by Spark. When producing a final knowledge graph (in the PG-Format JSONL.pg or alike), 
+	A value converter is used in the the ETL to convert a node/edge **property** value coming from a data source
+  into a string representation, as it's required by Spark.
+	When producing a final knowledge graph (in the PG-Format JSONL.pg or alike), 
 	the same converter is used to convert the string representation back into the actual value.
 	
 	We provide with a the default implementation :class:`ketl.JSONBasedValueConverter` (see there).
@@ -100,21 +101,11 @@ class ValueConverter ( ABC ):
 
 	- `name`: The converter name (usually the class name).
 
-	- `pre_serializers`: An optional function or list of functions applied to a value before serialization.
-	This can be set via :meth:`add_pre_serializers()` to customize the pre-processing of values. 
-	For instance, it can be used to set defaults, or normalize known values (eg, trimming whitespaces).
-	If it's a list, it's elements are chained in the list order (see :meth:`add_pre_serializers()`).
-	If it's `None`, a default is set that returns None for null or falsy ('', [], etc) values.
-
 	TODO: this could be a Python protocol.
 	"""
 
-	def __init__ ( self, pre_serializers: PreSerializers | None = None ):
+	def __init__ ( self ):
 		self.name: str = self.__class__.__name__
-		self.pre_serializer = None
-		if not pre_serializers:
-			pre_serializers = lambda v: v or None
-		self.add_pre_serializers ( pre_serializers )
 
 	@abstractmethod
 	def serialize ( self, v: Any ) -> str | None:
@@ -138,45 +129,29 @@ class ValueConverter ( ABC ):
 		or database population.
 		"""
 
-	def pre_serialize ( self, v: Any ) -> Any:
+	@classmethod
+	def get_default ( cls ) -> "ValueConverter":
 		"""
-		Helper that applies the pre-serializer, or, if this isn't set, returns v as-is.
+		Factory method to get the default value converter. If not set (eg, at the begin of an app), this
+		is :class:`ketl.JSONBasedValueConverter`.
 		"""
-		return self.pre_serializer ( v ) if self.pre_serializer else v
-
-	def add_pre_serializers ( self, pre_serializers: PreSerializers | None = None ):
+		if not hasattr ( cls, "_default" ):
+			cls._default = JSONBasedValueConverter ()
+		return cls._default
+	
+	@classmethod
+	def set_default ( cls , default_converter: "ValueConverter" ):
 		"""
-		Chains a list of pre-serializer functions to the one already set for this converter (else, just sets it).
-		This also supports a single pre-serializer function, which will be added as such.
-
-		Serialisers can be set either via this method or by directly setting the `pre_serializer` attribute.
-		When a serialser is added to an existing one, a new serializer is set for the converter that calls
-		the initial pre-serializer first, and then the new one on the result. Thus, this method is roughly 
-		equivalent to:
-
-		.. code-block:: python
-		  for pre_serializer in pre_serializers:
-				if not self.pre_serializer:
-					self.pre_serializer = pre_serializer
-				else:
-					old_pre_serializer = self.pre_serializer
-		  		self.pre_serializer = lambda v: pre_serializer ( old_pre_serializer ( v ) )
-		"""	
-		if not pre_serializers: return
-		# TODO: more_itertools.always_iterable
-		if not isinstance ( pre_serializers, list ):
-			pre_serializers = [ pre_serializers ]
-
-		for pre_serializer in pre_serializers:
-			if not self.pre_serializer:
-				self.pre_serializer = pre_serializer
-				continue
-			old_pre_serializer = self.pre_serializer
-			self.pre_serializer = lambda v: pre_serializer ( old_pre_serializer ( v ) )
+		Factory method to configure the default value converter.
+		"""
+		cls._default = default_converter
 
 
 class IdentityValueConverter ( ValueConverter ):
 	"""
+	TODO: probably to be removed. Proper serialisers are needed for properties and they aren't for
+	special keys.
+
 	Identity value converter for KETL.
 
 	This converter does nothing, that is, it returns the input value as-is both in serialisation
@@ -188,11 +163,9 @@ class IdentityValueConverter ( ValueConverter ):
 	Note that this still supports pre-serialization via :attr:`pre_serializer`.
 	"""
 
-	def __init__ ( self, pre_serializers: PreSerializers | None = None  ):
-		super().__init__( pre_serializers )
-
 	def serialize ( self, v: Any ) -> str:
-		return self.pre_serialize ( v )
+		if v is None: return None
+		return str ( v )
 
 	def unserialize ( self, s: str ) -> Any:
 		return s
@@ -208,15 +181,14 @@ class JSONBasedValueConverter ( ValueConverter ):
 	:class:`GraphTriple` data frame are quoted with '"'.
 	"""
 
-	def __init__ ( self, pre_serializers: PreSerializers | None = None  ):
-		super().__init__( pre_serializers )
-
 	def serialize ( self, v: Any ) -> str | None:
-		"""See the class description for details."""
-		v = self.pre_serialize ( v )
-
 		if v is None: return None
-		return json.dumps ( v )
+		# Saving empty values isn't worth
+		if isinstance ( v, str ) and v == "": return None
+		result = json.dumps ( v )
+		# Ditto
+		if result is None or result == "": return None
+		return result
 
 	def unserialize ( self, s: str ) -> Any:
 		"""See the class description for details."""
@@ -232,37 +204,18 @@ class ValueMapper ( ABC ):
 	A mapper is intended to map a single unit of data, such as a column value in a row or a field value
 	in a JSON object.
 
-	This is a simple scaffold that provides the :attr:`value_converter` attribute and its initialisation.
+	This is a simple scaffold, offering basic initialisation.
 
-	TODO: this clashes with names like SparkDataFrameMapper, we need to rename things to capture the distinction
-	between small chunks (like rows or cells) and whole containers (like files or DFs).
+	TODO: clarify null/empty behaviour, aggregating mappers, interaction with serialisation.
 	"""
 
 	def __init__ ( 
 		self, 
-		value_converter: ValueConverter | None = None,
-		pre_serializers: PreSerializers | None = None,
 		spark_data_type: DataType | None = None
 	):
 		"""
-		Initialises the mapper with the value_converter (uses :class:`ketl.JSONBasedValueConverter` if null), 
-		and sets up such converter with the pre_serializers (if any).
 
-		**WARNING**: if you pass your own converter and this is already equipped with its pre-serialiser(s),
-		you should not pass the same pre-serialiser(s) again here, else they will chained a second time
-		to the already existing ones.
-
-		This applies to subclasses too, that is, your initialisation should work like this:
-
-		```python
-		class MyMapper ( ValueMapper ):
-			def __init__ ( self ):
-				super().__init__ (
-					value_converter if value_converter else MyValueConverter ( pre_serializers ),
-					# Don't pass them twice when they're already passed to the default converter 
-					pre_serializers if not value_converter else None						
-				)
-		```
+		## Attributes
 
 		:attr:`spark_data_type` is an optional Spark data type to be used in tasks like
 		reading from a CSV. Essentially, it allows for setting an explicit schema.
@@ -271,20 +224,6 @@ class ValueMapper ( ABC ):
 		"""
 		self.spark_data_type = spark_data_type
 
-		if not value_converter:
-			self.value_converter = JSONBasedValueConverter ( pre_serializers )
-			return
-		
-		self.value_converter = value_converter
-		if pre_serializers: self.value_converter.add_pre_serializers ( pre_serializers )
-
-	def serialize ( self, value: Any ) -> str | None:
-		"""
-		Helper for serialising a value using the configured :attr:`value_converter`.
-		
-		You should use this in methods like `value()`, after having extracted a value from a data source.
-		"""
-		return self.value_converter.serialize ( value )
 
 
 class PropertyMapperMixin ( ABC ):
@@ -298,6 +237,8 @@ class PropertyMapperMixin ( ABC ):
 		"""
 		Initialises the mixin. This must be called by subclasses (typically from their constructors), 
 		before using methods like `triple()`.
+
+		TODO: bad name, change to something like _init_property
 		"""
 		self.property = property
 
@@ -313,49 +254,44 @@ class ConstantTripleMapper ( ValueMapper, PropertyMapperMixin ):
 	of configured Python data types (or custom types).
 
 	## Attributes
-	- `property (str)`: The property key/name.
-	- `constant_value (Any)`: The constant value to use to generate constant properties.
-	- `value_converter (ValueConverter)`: see :class:`ketl.ValueMapper`.
+	- `property`: The property key/name.
+	- `constant_value`: The constant value to use to generate constant properties.
+	- `spark_data_type`: see :class:`ketl.ValueMapper`.
 	"""
 	def __init__ (
 		self,
 		property: str,
 		constant_value: Any,
-		value_converter: Callable[[Any], str] = None,
-		pre_serializers: PreSerializers | None = None,
 		spark_data_type: DataType | None = None
 	):
-		super().__init__ ( 
-			value_converter, 
-			pre_serializers,
-			spark_data_type
-		)
+		super().__init__ ( spark_data_type )
 		self._init ( property )
 		self.constant_value = constant_value
 
-	def triple ( self, triple_id: str ) -> GraphTriple | None:
+	def triple ( self, triple_id: str, converter: ValueConverter = None ) -> GraphTriple | None:
 		"""
 		Does the mapping job, by building a :class:`ketl.GraphTriple` with the constant property/value.
 		and the provided triple ID.
+
+		The `converter` parameter is forwarded to the `value()` method. If the latter returns None
+		(possibly, after serialisation), then None is returned here too. As said below, this shouldn't be
+		a common case.
 		"""
-		v = self.value()
-		if v is None: return None # TODO: does it make sense?
+		v = self.value ( converter )
+		if v is None: return None # TODO: does it make sense? Should it raise an error instead?
 		return GraphTriple ( triple_id, self.property, v )
 	
-	def value ( self ) -> str | None:
+	def value ( self, converter: ValueConverter = None ) -> Any | None:
 		"""
-		Returns the constant value, after the expected serialisation of the configured :attr:`value_converter`,
-		which is obtained through :meth:`ketl.ValueMapper.serialize()`.
-		"""
-		return self.serialize ( self.constant_value )
-	
-	@classmethod
-	def for_type ( cls, type_value: str ):
-		"""
-		Helper to build a :class:`ketl.ConstantTripleMapper` for the :py:attr:`ketl.GraphTriple.TYPE_KEY` property,
-		that is, for a node/edge label/type.
+		Returns the constant value. Note that, given how `ValueMapper` deals with None and empty values,
+		this returns empty strings unchanged.
 
-		We use the :class:`ketl.IdentityValueConverter` here, since types aren't properties and tools
-		like the Neo4j uploader expect them to be unquoted strings.
+		This can turn an initial value into a serialised string when the `converter` parameter is provided. 
+		Usually, an aggregating mapper will decide to serialise or not, based on whether it's dealing with a 
+		node/edge user property or a special key like type.
+
+		When serialisation is applied, an empty string might end up returning None. Note that, while this is
+		possible, it would be usually weird that a mapping configuration has a null or empty constant.
 		"""
-		return cls ( GraphTriple.TYPE_KEY, type_value, IdentityValueConverter () )
+		if converter is not None: return converter.serialize ( self.constant_value )
+		return self.constant_value

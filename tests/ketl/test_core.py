@@ -1,9 +1,11 @@
 import logging
 
 from assertpy import assert_that
+import pytest
 
 from ketl.core import (ConstantTripleMapper, GraphProperty, GraphTriple,
                        JSONBasedValueConverter)
+import ketl.helpers as khelpers
 
 log = logging.getLogger ( __name__ )
 
@@ -66,6 +68,7 @@ class TestValueConverters:
 		assert_that ( converter.serialize ( None ), "None serializes to None" ).is_none ()
 		assert_that ( converter.unserialize ( None ), "None unserializes to None" ).is_none ()
 
+	@pytest.mark.skip ( reason = "TODO: to be moved to ValueMapper.with_value_filter()" )
 	def test_pre_serializers ( self ):
 		converter = JSONBasedValueConverter()
 		default = "<NA>"
@@ -105,7 +108,7 @@ class TestConstantPropertyMapper:
 		assert_that ( triple, "ConstPropertyMapper.triple() returns a GraphTriple" ).is_instance_of ( GraphTriple )
 		assert_that ( triple.id, "Triple ID is as expected" ).is_equal_to ( triple_id )
 		assert_that ( triple.key, "Triple key is as expected" ).is_equal_to ( const_prop )
-		assert_that ( triple.value, "Triple value is as expected" ).is_equal_to ( f'"{const_value}"' )
+		assert_that ( triple.value, "Triple value is as expected" ).is_equal_to ( const_value )
 	
 	def test_none_value ( self ):
 		"""TODO: Does this edge case make sense?"""
@@ -124,13 +127,16 @@ class TestConstantPropertyMapper:
 		const_mapper = ConstantTripleMapper ( const_prop, const_value )
 
 		triple_id = "N001"
-		triple = const_mapper.triple ( triple_id )
+		triple = const_mapper.triple ( triple_id, converter = JSONBasedValueConverter() )
 
-		assert_that ( triple, "ConstPropertyMapper.triple() returns None for empty strings" ).is_none ()
+		assert_that ( 
+			triple,
+			"ConstPropertyMapper.triple() returns None for empty strings that are serialised to None"
+		).is_none ()
 
-	def test_for_type_helper ( self ):
+	def test_type_triple_mapper ( self ):
 		type_label = "TestType"
-		const_mapper = ConstantTripleMapper.for_type ( type_label )
+		const_mapper = khelpers.type_triple_mapper ( type_label )
 
 		triple_id = "N001"
 		triple = const_mapper.triple ( triple_id )

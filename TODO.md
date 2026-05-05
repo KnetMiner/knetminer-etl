@@ -34,6 +34,8 @@
 	* [ ] introduce the `from_fun()` helpers (see below)
 	* [ ] introduce `with_value_filter( fun ) -> ValueMapper` in `ValueMapper`
 * [ ] Serialisation applies only to node/edge properties, there is no need for it with triple keys like 'ID', 'TYPE', 'FROM', 'TO'.
+* [ ] Serialisation **is not** related to value mappers (eg, column mappers), since it's about all data types and hence it is to be linked to aggregate mappers, such as `SparkDataFrameMapper`.
+**Even better**: introduce a configurable global value converter.
 
 ## `Mapper`
 * [ ] it keeps the converter, but aggregate mappers must set their component converters when they're none
@@ -53,11 +55,11 @@
 * [X] Rename to `IdColumnValueMapper`
 
 ## `ColumnMapper`
-* [ ] Rename to `ColumnTripleMapper`
+* [X] Rename to `ColumnTripleMapper`
 
 ## Build functions
 
-* [ ] `type_triple_mapper (...)`: makes a `ConstantTripleMapper` for the type label
+* [X] `type_triple_mapper (...)`: makes a `ConstantTripleMapper` for the type label
 * [ ] `row_value_mapper_from_fun (...)`
 * [ ] `row_triple_mapper_from_fun (...)`
 * [ ] `id_column_value_mapper_from_fun (...)`
