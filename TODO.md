@@ -30,9 +30,10 @@
 # Grand Review of 2026-05
 
 ## `ValueConverter`
-* [ ] pre-serialisers need to be ~~separated~~ removed:
-	* [ ] introduce the `from_fun()` helpers (see below)
-	* [ ] introduce `with_value_filter( fun ) -> ValueMapper` in `ValueMapper`
+* [X] pre-serialisers need to be ~~separated~~ removed:
+	* [X] introduce the `from_fun()` helpers (see below)
+	* [X] introduce `with_value_filter( fun ) -> ValueMapper` in `ValueMapper`
+		* [ ] to be tested
 * [ ] Serialisation applies only to node/edge properties, there is no need for it with triple keys like 'ID', 'TYPE', 'FROM', 'TO'.
 * [ ] Serialisation **is not** related to value mappers (eg, column mappers), since it's about all data types and hence it is to be linked to aggregate mappers, such as `SparkDataFrameMapper`.
 **Even better**: introduce a configurable global value converter.
@@ -52,25 +53,23 @@
 * [X] Rename to `RowTripleMapper`. It's too complicated to be considered a mixin.
 
 ## `IdColumnMapper`
-* [X] Rename to `IdColumnValueMapper`
+* [ ] Remove it. With the new design, this is just a `RowValueMapper` (including a `ColumnValueMapper`) playing the role of ID mapper (assigned to the `id_mapper` field of `SparkDataFrameMapper`).
 
 ## `ColumnMapper`
 * [X] Rename to `ColumnTripleMapper`
+* [X] Remove. `RowValueMapper.to_triple_mapper()` can be used instead.
 
 ## Build functions
 
 * [X] `type_triple_mapper (...)`: makes a `ConstantTripleMapper` for the type label
-* [ ] `row_value_mapper_from_fun (...)`
-* [ ] `row_triple_mapper_from_fun (...)`
-* [ ] `id_column_value_mapper_from_fun (...)`
-* [ ] `auto_edge_id_row_value_mapper(...)`
-* [ ] `edge_id_row_value_mapper(...)`
-* [ ] `edge_from_row_triple_mapper(...)`: makes a `RowTripleMapper`
-* [ ] `edge_to_row_triple_mapper(...)`: makes a `RowTripleMapper`
-* [ ] `edge_id_row_value_mapper(...)`
-* [ ] `node_id_column_value_mapper(...)`
-* [ ] `edge_from_column_triple_mapper(...)`: makes a `ColumnTripleMapper`, uses 1 col only
-* [ ] `edge_to_column_triple_mapper(...)`: makes a `ColumnTripleMapper`, uses 1 col only
+* [X] `row_value_mapper (...)`
+* [X] `row_triple_mapper (...)`
+* [X] `edge_id_row_value_mapper(...)`
+* [X] `edge_auto_id_row_value_mapper(...)`
+* [X] `edge_source_row_triple_mapper(...)`: makes a `RowTripleMapper`
+* [X] `edge_target_row_triple_mapper(...)`: makes a `RowTripleMapper`
+* [X] `edge_source_column_triple_mapper(...)`: makes a `ColumnTripleMapper`, uses 1 col only
+* [X] `edge_target_column_triple_mapper(...)`: makes a `ColumnTripleMapper`, uses 1 col only
 
 ## `SparkDataFrameMapper`
 * [ ] Simplify the constructor by removing the separation between `row_mappers` and `const_prop_mappers`, it is able to split an initial mixed list.
