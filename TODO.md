@@ -39,10 +39,10 @@
 **Even better**: introduce a configurable global value converter.
 
 ## `Mapper`
-* [ ] it keeps the converter, but aggregate mappers must set their component converters when they're none
-  * TODO: ID/regular mappers?
+* [ ] The converter becomes a param of `value()`, the aggregate mappers pass down the configured converter when they need to map a custom element property, not special triple keys (id, type, etc)
+	* [ ] thus, Id mappers must go away, they're value mappers with special role, and with no serialisation involved.
 * [X] rename to `ValueMapper`
-* [ ] Various properties should become fluent, ie, `withXXX( x )`
+* [X] Various properties should become fluent, ie, `withXXX( x )`
 
 ## `ConstantPropertyMapper`
 * [X] Rename to `ConstantTripleMapper`
@@ -53,7 +53,7 @@
 * [X] Rename to `RowTripleMapper`. It's too complicated to be considered a mixin.
 
 ## `IdColumnMapper`
-* [ ] Remove it. With the new design, this is just a `RowValueMapper` (including a `ColumnValueMapper`) playing the role of ID mapper (assigned to the `id_mapper` field of `SparkDataFrameMapper`).
+* [ ] Remove it. As said above, With the new design, this is just a `RowValueMapper` (including a `ColumnValueMapper`) playing the role of ID mapper (assigned to the `id_mapper` field of `SparkDataFrameMapper`).
 
 ## `ColumnMapper`
 * [X] Rename to `ColumnTripleMapper`
@@ -73,7 +73,8 @@
 
 ## `SparkDataFrameMapper`
 * [ ] Simplify the constructor by removing the separation between `row_mappers` and `const_prop_mappers`, it is able to split an initial mixed list.
-* [ ] Use the mapper's column_ids only if present in at least one, else use all the DF columns. Document that the latter can be inefficient for wide tables, but given that's not usually the case, it's a good default.
+* [ ] Add a `use_column_ids` flag = False. The mapper's column_ids are only used if this is set (and their presence is enforced in that case), else use all the DF columns. Document that the latter can be inefficient for wide tables, but given that's not usually the case, it's a good default.
+* [ ] Must take control of when to apply the configured converter.
 
 ## `triples_2_pg_df()`
 * [ ] see if we can remove `triples_type` and instead we can build a mixed result of nodes and edges (by playing with Spark SQL, eg, `CASE WHEN`).
