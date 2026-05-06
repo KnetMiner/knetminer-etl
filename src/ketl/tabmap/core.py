@@ -25,25 +25,12 @@ class RowValueMapper ( ValueMapper ):
 
 	Maps a row to a value, based on one or more column values.
 	"""
-	def __init__ ( 
-		self,
-		spark_data_type: DataType | None = None,
-		column_ids: list [ str ] | None = None,
-	):
-		"""
-		## Parameters
-
-		- column_ids: the list of column IDs that this mapper depends on. This is used by components
-		  like :class:`ketl.tabmap.SparkDataFrameMapper`, to know the tabular input schema. As explained
-			there, if column IDs aren't specified, the mappers load all the columns in the input, with 
-			a possible impact on performance.
-		"""
-
-		super().__init__ ( spark_data_type )
-		self.column_ids = column_ids
+	def __init__ ( self ):
+		super().__init__ ()
+		self.column_ids: list [ str ] | None = None
 
 	@abstractmethod
-	def value ( self, row_dict: dict [ str, Any ] ) -> Any | None:
+	def value ( self, row_dict: dict [ str, Any ], converter: ValueConverter = None ) -> Any | None:
 		"""
 		The method that does the job of mapping a row to a value.
 
@@ -54,6 +41,15 @@ class RowValueMapper ( ValueMapper ):
 
 		The row_dict parameter is always guaranteed to be non-empty, since the aggregate mappers like
 		:class:`ketl.tabmap.SparkDataFrameMapper` skip empty rows.
+
+		This method can turn an initial value into a serialised string when the `converter` parameter is provided. 
+		Usually, an aggregating mapper will decide to serialise or not, based on whether it's dealing with a 
+		node/edge user property or a special key like type.
+
+		When serialisation is applied, an empty string might end up returning None. Note that, while this is
+		possible, it would be usually weird that a mapping configuration has a null or empty constant.
+
+		TODO: test the serialisation.
 		"""
 
 	def with_value_wrapper ( self, value_wrapper: Callable[ [Any], Any ] ) -> "RowValueMapper":
@@ -61,7 +57,7 @@ class RowValueMapper ( ValueMapper ):
 		Returns a new :class:`ketl.tabmap.RowValueMapper` that applies the provided `value_wrapper` to 
 		the value returned by this mapper.
 
-		This can be useful for applications like adding prefixes/postfixed, trimming strings or discard
+		This can be useful for applications like adding prefixes/postfixed, trimming strings or discarding
 		invalid values (by returning None).
 
 		See also helper wrappers in :mod:`ketl.helpers`.
@@ -74,12 +70,23 @@ class RowValueMapper ( ValueMapper ):
 		else:
 			# Redefine value() to apply self._value_wrapper
 			original_value_fun = self.value
-			def value_with_wrapper ( row_dict: dict [ str, Any ] ) -> Any | None:
+			def value_with_wrapper ( row_dict: dict [ str, Any ], converter: ValueConverter = None ) -> Any | None:
 				return value_wrapper ( original_value_fun ( row_dict ) )
 			self.value = value_with_wrapper
 		self._value_wrapper = value_wrapper
 		return self
-	
+
+	def with_column_ids ( self, column_ids: list [ str ] ) -> "RowValueMapper":
+		"""
+		The list of column IDs that this mapper depends on. This is used by components
+		like :class:`ketl.tabmap.SparkDataFrameMapper`, to know the tabular input schema. As explained
+		there, if column IDs aren't specified, the mappers load all the columns in the input, with 
+		a possible impact on performance.
+
+		This is a fluent style setter, it returns `self`.
+		"""
+		self.column_ids = column_ids
+		return self
 
 	def to_triple_mapper ( self, property: str ) -> "RowTripleMapper":
 		"""
@@ -91,10 +98,12 @@ class RowValueMapper ( ValueMapper ):
 		parent = self
 		class TripleMapperWrapper ( RowTripleMapper ):
 			def __init__ ( self ):
-				super().__init__ ( property, parent.spark_data_type, parent.column_ids )
+				super().__init__ ( property )
+				self.with_spark_data_type ( parent.spark_data_type )\
+					.with_column_ids ( parent.column_ids )
 
-			def value ( self, row_dict: dict [ str, Any ] ) -> Any | None:
-				return parent.value ( row_dict )		
+			def value ( self, row_dict: dict [ str, Any ], converter: ValueConverter = None ) -> Any | None:
+				return parent.value ( row_dict, converter )		
 		return TripleMapperWrapper ()
 	
 # /RowValueMapper
@@ -110,23 +119,24 @@ class RowTripleMapper ( RowValueMapper, PropertyMapperMixin ):
 	def __init__ ( 
 		self,
 		property: str,
-		spark_data_type: DataType | None = None,
-		column_ids: list [ str ] | None = None,
 	):
 		"""
 		For details about the parameters, see :class:`ketl.tabmap.RowValueMapper` 
 		and :class:`ketl.PropertyMapperMixin`.
 		"""
-		super().__init__ ( spark_data_type, column_ids )
+		super().__init__ ()
 		self._init ( property )
 
-	def triple ( self, triple_id: str, row_dict: dict [ str, Any ] ) -> GraphTriple | None:
+	def triple ( self, triple_id: str, row_dict: dict [ str, Any ], converter: ValueConverter = None ) -> GraphTriple | None:
 		"""
 		Builds a :class:`ketl.GraphTriple` for this row, based on the value returned by :meth:`value()`.
 		Returns `None` the value mapping returns `None` (after massages like serialisation).
+
+		The `converter` parameter is forwarded to the `value()` method. If the latter returns None
+		(possibly, after serialisation), then None is returned here too.
 		"""
 
-		prop_value = self.value ( row_dict )
+		prop_value = self.value ( row_dict, converter )
 		if prop_value is None: return None
 		return GraphTriple ( triple_id, self.property, prop_value )
 # /RowTripleMapper
@@ -144,11 +154,11 @@ class ColumnValueMapper ( RowValueMapper ):
 	def __init__ ( 
 		self,
 		column_id: str, 
-		spark_data_type: DataType | None = None
 	):
-		super().__init__ ( spark_data_type, [ column_id ] )
+		super().__init__ ()
+		self.with_column_ids ( [ column_id ] )
 
-	def value ( self, row_dict: dict [ str, Any ] ) -> Any | None:
+	def value ( self, row_dict: dict [ str, Any ], converter: ValueConverter = None ) -> Any | None:
 		"""
 		Maps a data frame row (in the form `col: <value>`) to the target column value.
 
@@ -160,7 +170,9 @@ class ColumnValueMapper ( RowValueMapper ):
 		Moreover, this assumes `row_dict` to be non-empty.
 		"""
 		if self.column_id not in row_dict: return None
-		return row_dict [ self.column_id ]
+		value = row_dict.get ( self.column_id )
+		if converter: value = converter.convert ( value )
+		return value
 	
 	@property
 	def column_id ( self ) -> str:

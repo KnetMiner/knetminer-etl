@@ -209,21 +209,20 @@ class ValueMapper ( ABC ):
 	TODO: clarify null/empty behaviour, aggregating mappers, interaction with serialisation.
 	"""
 
-	def __init__ ( 
-		self, 
-		spark_data_type: DataType | None = None
-	):
+	def __init__ ( self ):
+		self.spark_data_type: DataType | None = None
+	
+	def with_spark_data_type ( self, spark_data_type: DataType ) -> "ValueMapper":
 		"""
-
-		## Attributes
-
-		:attr:`spark_data_type` is an optional Spark data type to be used in tasks like
+		An optional Spark data type to be used in tasks like
 		reading from a CSV. Essentially, it allows for setting an explicit schema.
+
+		This is a fluent style setter, it returns `self`.
 
 		TODO: StructType.nullable
 		"""
 		self.spark_data_type = spark_data_type
-
+		return self
 
 
 class PropertyMapperMixin ( ABC ):
@@ -261,10 +260,9 @@ class ConstantTripleMapper ( ValueMapper, PropertyMapperMixin ):
 	def __init__ (
 		self,
 		property: str,
-		constant_value: Any,
-		spark_data_type: DataType | None = None
+		constant_value: Any
 	):
-		super().__init__ ( spark_data_type )
+		super().__init__ ()
 		self._init ( property )
 		self.constant_value = constant_value
 
@@ -286,7 +284,7 @@ class ConstantTripleMapper ( ValueMapper, PropertyMapperMixin ):
 		Returns the constant value. Note that, given how `ValueMapper` deals with None and empty values,
 		this returns empty strings unchanged.
 
-		This can turn an initial value into a serialised string when the `converter` parameter is provided. 
+		This method can turn an initial value into a serialised string when the `converter` parameter is provided. 
 		Usually, an aggregating mapper will decide to serialise or not, based on whether it's dealing with a 
 		node/edge user property or a special key like type.
 

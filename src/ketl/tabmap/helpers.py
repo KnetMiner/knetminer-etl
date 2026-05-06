@@ -5,7 +5,7 @@ Helpers used to build tabular source mappers and related entities.
 from collections.abc import Callable
 from typing import Any
 
-from ketl.core import ConstantTripleMapper, GraphTriple, ValueMapper
+from ketl.core import ConstantTripleMapper, GraphTriple, ValueConverter, ValueMapper
 import ketl.helpers as khelpers
 from ketl.tabmap.core import ColumnValueMapper, RowTripleMapper, RowValueMapper
 
@@ -13,9 +13,7 @@ from pyspark.sql.types import DataType
 
 
 def row_value_mapper ( 
-	fun: Callable [ [ dict[ str, Any ] ], Any|None ],
-	spark_data_type: DataType | None = None,
-	column_ids: list [ str ] | None = None,
+	fun: Callable [ [ dict[ str, Any ] ], Any|None ]
 ) -> RowValueMapper:
 	"""
 	Builds a :class:`ketl.tabmap.RowValueMapper` from a function that extracts a value from a row dictionary.
@@ -27,17 +25,18 @@ def row_value_mapper (
 	"""
 	class FunRowValueMapper ( RowValueMapper ):
 		def __init__ ( self ):
-			super().__init__ ( spark_data_type, column_ids )
+			super().__init__ ()
 
-		def value ( self, row_dict: dict [ str, Any ] ) -> Any | None:
-			return fun ( row_dict )
+		def value ( self, row_dict: dict [ str, Any ], converter: ValueConverter = None ) -> Any | None:
+			value = fun ( row_dict )
+			if converter: value = converter.convert ( value )
+			return value
 	
 	return FunRowValueMapper ()
 
 
 def edge_source_row_triple_mapper ( 
-	extractor: Callable [ [ dict[ str, Any ] ], Any | None ] | RowValueMapper | str,
-	column_ids: list [ str ] | None = None,
+	extractor: Callable [ [ dict[ str, Any ] ], Any | None ] | RowValueMapper | str
 ) -> RowTripleMapper:
 	"""
 	Helper to build a :class:`ketl.tabmap.RowTripleMapper` for an edge source (ie, for a triple with the 
@@ -53,14 +52,13 @@ def edge_source_row_triple_mapper (
 	elif isinstance ( extractor, str ):
 		row_val_map = ColumnValueMapper ( column_id = extractor )
 	else:
-		row_val_map = row_value_mapper ( fun = extractor, column_ids = column_ids )
+		row_val_map = row_value_mapper ( fun = extractor )
 
 	return row_val_map.to_triple_mapper ( property = GraphTriple.FROM_KEY )
 
 
 def edge_target_row_triple_mapper (
-	extractor: Callable [ [ dict[ str, Any ] ], Any | None ] | RowValueMapper,
-	column_ids: list [ str ] | None = None,
+	extractor: Callable [ [ dict[ str, Any ] ], Any | None ] | RowValueMapper | str
 ) -> RowTripleMapper:
 	"""
 	Helper to build a :class:`ketl.tabmap.RowTripleMapper` for an edge target (ie, for a triple with the 
@@ -74,7 +72,7 @@ def edge_target_row_triple_mapper (
 	elif isinstance ( extractor, str ):
 		row_val_map = ColumnValueMapper ( column_id = extractor )
 	else:
-		row_val_map = row_value_mapper ( fun = extractor, column_ids = column_ids )
+		row_val_map = row_value_mapper ( fun = extractor )
 
 	return row_val_map.to_triple_mapper ( property = GraphTriple.TO_KEY )
 
@@ -93,7 +91,8 @@ def edge_id_row_value_mapper (
 			raise ValueError ( f"Empty value in edge from/to column '{from_column_id}', '{to_column_id}'" )
 		return edge_id ( type_id, from_id, to_id )
 	
-	return row_value_mapper ( extractor, column_ids = [ from_column_id, to_column_id ] )
+	return row_value_mapper ( extractor )\
+		.with_column_ids ( [ from_column_id, to_column_id ] )
 		
 
 def edge_auto_id_row_value_mapper (
@@ -153,9 +152,8 @@ def edge_auto_id_row_value_mapper (
 
 	# Here it is
 	return row_value_mapper (
-		fun = lambda row: edge_id ( type_extractor ( row ), from_extractor ( row ), to_extractor ( row ) ),
-		column_ids = col_ids
-	)
+		fun = lambda row: edge_id ( type_extractor ( row ), from_extractor ( row ), to_extractor ( row ) )
+	).with_column_ids ( col_ids )
 
 
 def edge_id ( type_id: str, from_id: str, to_id: str ) -> str:
