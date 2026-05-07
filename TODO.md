@@ -27,12 +27,12 @@
 * [ ] Performance: add a common label to all the nodes and index it on `id` before edge loading
 
 
-# Grand Review of 2026-05
+# Grand Restructuring of 2026-05
 
 ## `ValueConverter`
 * [X] pre-serialisers need to be ~~separated~~ removed:
 	* [X] introduce the `from_fun()` helpers (see below)
-	* [X] introduce `with_value_filter( fun ) -> ValueMapper` in `ValueMapper`
+	* [X] introduce `with_value_wrapper( fun ) -> ValueMapper` in `ValueMapper`
 		* [ ] to be tested
 * [ ] Serialisation applies only to node/edge properties, there is no need for it with triple keys like 'ID', 'TYPE', 'FROM', 'TO'.
 * [ ] Serialisation **is not** related to value mappers (eg, column mappers), since it's about all data types and hence it is to be linked to aggregate mappers, such as `SparkDataFrameMapper`.
@@ -41,6 +41,8 @@
 ## `Mapper`
 * [ ] The converter becomes a param of `value()`, the aggregate mappers pass down the configured converter when they need to map a custom element property, not special triple keys (id, type, etc)
 	* [ ] thus, Id mappers must go away, they're value mappers with special role, and with no serialisation involved.
+	* We considered using `with_value_wrapper()` to equip a mapper with a converter, but this conflates
+	concerns and worse, makes a stateful change to the mapper. If the same mapper is used both for saving a custom property and something like a node ID, the latter means looking for troubles.
 * [X] rename to `ValueMapper`
 * [X] Various properties should become fluent, ie, `withXXX( x )`
 
@@ -56,7 +58,7 @@
 * [ ] Remove it. As said above, With the new design, this is just a `RowValueMapper` (including a `ColumnValueMapper`) playing the role of ID mapper (assigned to the `id_mapper` field of `SparkDataFrameMapper`).
 
 ## `ColumnMapper`
-* [X] Rename to `ColumnTripleMapper`
+* ~~[X] Rename to `ColumnTripleMapper`~~
 * [X] Remove. `RowValueMapper.to_triple_mapper()` can be used instead.
 
 ## Build functions
