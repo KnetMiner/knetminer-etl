@@ -35,7 +35,7 @@ def test_snake_tabmap_edges ():
 
 	test_entry = { 
 		"type": "edge",
-		"id": "encodes-protein_ENSMBL0003_QA03",
+		"id": "encodes-protein:ENSMBL0003-QA03",
 		"labels": ["encodes-protein"],
 		"from": "ENSMBL0003", 
 		"to": "QA03",

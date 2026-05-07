@@ -69,33 +69,6 @@ class TestValueConverters:
 		converter = JSONBasedValueConverter()
 		assert_that ( converter.serialize ( None ), "None serializes to None" ).is_none ()
 		assert_that ( converter.unserialize ( None ), "None unserializes to None" ).is_none ()
-
-	@pytest.mark.skip ( reason = "TODO: to be moved to ValueMapper.with_value_filter()" )
-	def test_pre_serializers ( self ):
-		converter = JSONBasedValueConverter()
-		default = "<NA>"
-		# This is to test the addition method. You can set it straight with:
-		#
-		# converter.pre_serializer = ...
-		# 
-		# If you use `add_pre_serializers()`, you'll typically add to the default pre-serializer that the
-		# converter sets. Usually, this is a function that turns any falsy value into `None`, or returns
-		# the value unchanged. 
-		#
-		# The pre-serialisers chain might still land a None to your string, so you have do your own
-		# null handing, so this has to be considered in your serialisers.
-		# 
-		# A further option is doing base filtering with Spark DataFrame transformations.
-		#
-		converter.add_pre_serializers ( lambda s: s or default ) # We might get None here
-		converter.add_pre_serializers ( lambda s: s.upper () )
-
-		s = "Hello"
-		sv = converter.serialize ( s )
-		assert_that ( sv, "Pre-serializer-equipped converter works on regular string" ).is_equal_to ( '"' + s.upper () + '"' )
-
-		assert_that ( converter.serialize ( "" ), "Pre-serializer-equipped converter converts empty string to default" ).is_equal_to ( '"' + default + '"' )
-		assert_that ( converter.serialize ( None ), "Pre-serializer-equipped converter converts None to default" ).is_equal_to ( '"' + default + '"' )
 # /TestValueConverters
 
 class TestConstantPropertyMapper:

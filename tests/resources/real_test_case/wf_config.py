@@ -18,9 +18,9 @@ from pyspark.sql import SparkSession
 
 def get_spark_session ():
 	return SparkSession.builder\
-			.master ( "local[*]" )\
-			.appName ( "test_ketl_snake" )\
-			.getOrCreate()
+		.master ( "local[*]" )\
+		.appName ( "test_ketl_snake" )\
+		.getOrCreate()
 
 def create_neo4j_driver () -> neo4j.AsyncDriver:
 	driver = neo4j.AsyncGraphDatabase.driver ( 

@@ -21,7 +21,7 @@ from brandizpyes.logging import logger_config
 
 # TODO: ketl logging
 
-KETL_DATA = os.environ [ "KETL_DATA" ] # TODO
+KETL_DATA = os.environ [ "KETL_DATA" ]
 KETL_IN = os.path.abspath ( workflow.basedir )
 KETL_OUT = f"{KETL_DATA}/output"
 KETL_TMP = f"{KETL_DATA}/tmp"

@@ -6,13 +6,16 @@ from ketl.tabmap.sample_config import ENCODING_MAPPER, PROTEINS_MAPPER
 from pyspark.sql import SparkSession
 from pyspark.sql.types import IntegerType
 
-from ketl.core import ConstantTripleMapper, PGElementType
+from ketl.core import ConstantTripleMapper, PGElementType, SparkDataFrameTypes
 from ketl.io.core import pg_df_2_pg_jsonl, triples_2_pg_df
 from ketl.spark.utils import df_check_path, df_path
-from ketl.tabmap.core import (ColumnTripleMapper, IdColumnValueMapper, SparkDataFrameMapper,
+from ketl.tabmap.core import (ColumnValueMapper, ColumnTripleMapper, SparkDataFrameMapper,
 						 TabFileMapper)
+import ketl.helpers as khelpers
+import ketl.tabmap.helpers as tbhelpers
 
-KETL_DATA = os.environ [ "KETL_DATA" ] # TODO
+
+KETL_DATA = os.environ [ "KETL_DATA" ]
 KETL_IN = os.path.abspath ( workflow.basedir )
 KETL_OUT = f"{KETL_DATA}/output"
 KETL_TMP = f"{KETL_DATA}/tmp"
@@ -105,24 +108,27 @@ rule map_gene_tsv:
 		"""
 		This is the ugly version. Typically, you'll want to isolate this into 
 		a separate .py, which would receive tsv/parquet as params.
-
-		TODO: add a rule with that style.
 		
 		"""
 		tb_mapper = TabFileMapper (
-			id_mapper = IdColumnValueMapper ( column_id = "accession" ),	
-			row_mappers = [
-				   ColumnTripleMapper ( column_id = "name", property = "hasGeneName" ),
-				   ColumnTripleMapper ( "accession", "hasAccession" ),
-				   ColumnTripleMapper ( "chromosome", "hasChromosomeId" ),
-				   ColumnTripleMapper ( "begin", "hasChromosomeBegin", spark_data_type = IntegerType () ),
-				   ColumnTripleMapper ( "end", "hasChromosomeEnd", spark_data_type = IntegerType () )
-			],
-			const_prop_mappers = [
-				ConstantTripleMapper.for_type ( "Gene" ),
+			id_mapper = ColumnValueMapper ( column_id = "accession" ),	
+			mapper_components = [
+				ColumnTripleMapper ( column_id = "name", property = "hasGeneName" ),
+				ColumnTripleMapper ( "accession", "hasAccession" ),
+				ColumnTripleMapper ( "chromosome", "hasChromosomeId" ),
+				ColumnTripleMapper ( "begin", "hasChromosomeBegin" ),
+				ColumnTripleMapper ( "end", "hasChromosomeEnd" ),
+				khelpers.type_triple_mapper ( "Gene" ),
 				ConstantTripleMapper ( property = "source", constant_value = "SnakeTest" )
 			],
 			spark_options = { "inferSchema": False }
+		)
+		# This is reported to illustrate the feature, you shouldn't need it very often.
+		tb_mapper.spark_data_frame_types = SparkDataFrameTypes (
+			column_specs = {
+				"begin": SparkDataFrameTypes.ColumnSpec ( IntegerType () ),
+				"end": SparkDataFrameTypes.ColumnSpec ( IntegerType () )
+			}
 		)
 
 		tb_mapper.map ( spark_session, input[0], out_path = output[0] )

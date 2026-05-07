@@ -146,8 +146,8 @@ def edge_auto_id_row_value_mapper (
 
 	# Add them if available from the underlying mappers.
 	col_ids = [ 
-		col for pm in ( type_map, from_map, to_map ) if isinstance ( pm, RowValueMapper )
-		for col in pm.column_ids
+		col for pm in ( type_map, from_map, to_map ) if ( isinstance ( pm, RowValueMapper ) and pm.column_ids )
+		for col in pm.column_ids 
 	]
 
 	# Component extractors to be used by the final extractor to compose the edge ID

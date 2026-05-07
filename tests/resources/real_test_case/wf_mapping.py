@@ -1,11 +1,23 @@
 
-from ketl.core import ConstantTripleMapper, GraphTriple, IdentityValueConverter
-from ketl.tabmap.core import ColumnTripleMapper, IdColumnValueMapper, RowTripleMapper, TabFileMapper, SparkDataFrameMapper
+"""
+Reproduces a real mapping file in the old Ondex-based pipeline.
+
+(`/home/data/knetminer/pub/config/arabidopsis_thaliana/gene-protein-ensembl.xml`)
+
+This maps ENSEMBL IDs from the input TSV to gene nodes, enriching the result with constants
+like the source.
+"""
+
+from ketl.core import ConstantTripleMapper
+from ketl.tabmap.core import ColumnTripleMapper, ColumnValueMapper, RowTripleMapper, RowValueMapper, TabFileMapper, SparkDataFrameMapper
 from ketl.io.neoloader import NeoLoaderConfig, NeoLoaderPropertyConfig
+
+import ketl.helpers as khelpers
+import ketl.tabmap.helpers as tbhelpers
 
 
 def make_accession_mappers_for_source ( 
-	source_id: str, acc_col_id: str, source_id_mapper: IdColumnValueMapper 
+	source_id: str, acc_col_id: str, source_id_mapper: RowValueMapper 
 ) -> tuple[TabFileMapper, TabFileMapper]:
 	"""
 	Helper to make a pair of :class:`TabFileMapper`(s), one that maps an accession column and a known 
@@ -22,28 +34,23 @@ def make_accession_mappers_for_source (
 
 	"""
 	acc_mapper = TabFileMapper (
-		id_mapper = IdColumnValueMapper.from_extractor ( 
-			extractor = lambda row: f"accession:{source_id}:{row[acc_col_id]}",
-			column_id = acc_col_id
+		id_mapper = tbhelpers.row_value_mapper ( 
+			lambda row: f"accession:{source_id}:{row[acc_col_id]}"
 		),
-		row_mappers = [
-			   ColumnTripleMapper ( column_id = acc_col_id, property = "value" ),
-		],
-		const_prop_mappers = [
-			ConstantTripleMapper.for_type ( "Accession" ),
+		mapper_components = [
+			ColumnTripleMapper ( column_id = acc_col_id, property = "value" ),
+			khelpers.type_triple_mapper ( "Accession" ),
 			ConstantTripleMapper ( property = "source", constant_value = source_id )
 		]
 	)
 
 	rel_mapper = TabFileMapper (
 		id_mapper = SparkDataFrameMapper.AutoEdgeId (),
-		const_prop_mappers = [
+		mapper_components = [
 			# TODO: check AgriSchemas
-			ConstantTripleMapper.for_type ( "hasAccession" ),
-		],
-		row_mappers = [
-			RowTripleMapper.for_from ( source_id_mapper ),
-			RowTripleMapper.for_to ( acc_mapper.id_mapper )
+			khelpers.type_triple_mapper ( "hasAccession" ),
+			tbhelpers.edge_source_row_triple_mapper ( source_id_mapper ),
+			tbhelpers.edge_target_row_triple_mapper ( acc_mapper.id_mapper )
 		]
 	)
 
@@ -55,20 +62,14 @@ def make_accession_mappers_for_source (
 E2U_ENSEMBL_GENE_MAPPER = TabFileMapper (
 	# The node ID is usually a prefix + the accession for this type. The prefix is often needed
 	# because the same accessions are used for multiple related types, eg, genes and proteins.
-	id_mapper = IdColumnValueMapper.for_node_id ( node_type = "gene", column_id = "ENSEMBL ID" ),
-	const_prop_mappers = [ 
-		ConstantTripleMapper.for_type ( "Gene" ),
+	# The fluent chain here is a typical way to add a prefix to a value mapper.
+	id_mapper = ColumnValueMapper ( column_id = "ENSEMBL ID" )\
+		.with_value_wrapper ( khelpers.string_value_wrapper ( prefix = "gene:" ) ),
+	mapper_components = [ 
+		khelpers.type_triple_mapper ( "Gene" ),
 		ConstantTripleMapper ( property = "dataSources", constant_value = "ENSEMBL-Plants" ),
 	]
 )
-"""
-Reproduces a real mapping file in the old Ondex-based pipeline.
-
-(`/home/data/knetminer/pub/config/arabidopsis_thaliana/gene-protein-ensembl.xml`)
-
-This maps ENSEMBL IDs from the input TSV to gene nodes, enriching the result with constants
-like the source.
-"""
 
 E2U_ENSEMBL_GENE_ACCESSION_MAPPERS = make_accession_mappers_for_source ( 
 	source_id = "ENSEMBL-Plants",
@@ -80,9 +81,10 @@ E2U_ENSEMBL_GENE_ACCESSION_MAPPERS = make_accession_mappers_for_source (
 E2U_ENSEMBL_PROTEIN_MAPPER = TabFileMapper (
 	# The node ID is usually a prefix + the accession for this type. The prefix is often needed
 	# because the same accessions are used for multiple related types, eg, genes and proteins.
-	id_mapper = IdColumnValueMapper.for_node_id ( node_type = "protein", column_id = "UniProt ID" ),
-	const_prop_mappers = [ 
-		ConstantTripleMapper.for_type ( "Protein" ),
+	id_mapper = ColumnValueMapper ( column_id = "UniProt ID" )\
+		.with_value_wrapper ( khelpers.string_value_wrapper ( prefix = "protein:" ) ),
+	mapper_components = [ 
+		khelpers.type_triple_mapper ( "Protein" ),
 		ConstantTripleMapper ( property = "dataSources", constant_value = "ENSEMBL-Plants" ),
 		ConstantTripleMapper ( property = "dataSources", constant_value = "TAIR" )
 	]
@@ -106,13 +108,11 @@ E2U_TAIR_PROTEIN_ACCESSION_MAPPERS = make_accession_mappers_for_source (
 
 E2U_GENE2PROTEIN_MAPPER = TabFileMapper (
 	id_mapper = SparkDataFrameMapper.AutoEdgeId (),
-	row_mappers = [
+	mapper_components = [
 		# endpoint ID mappers can often be reused
-		RowTripleMapper.for_from ( E2U_ENSEMBL_GENE_MAPPER.id_mapper ),
-		RowTripleMapper.for_to ( E2U_ENSEMBL_PROTEIN_MAPPER.id_mapper ),
-	],
-	const_prop_mappers = [ 
-		ConstantTripleMapper.for_type ( "encodesProtein" ),
+		tbhelpers.edge_source_row_triple_mapper ( E2U_ENSEMBL_GENE_MAPPER.id_mapper ),
+		tbhelpers.edge_target_row_triple_mapper ( E2U_ENSEMBL_PROTEIN_MAPPER.id_mapper ),
+		khelpers.type_triple_mapper ( "encodesProtein" ),
 		ConstantTripleMapper ( property = "dataSources", constant_value = "ENSEMBL Plants" ),
 		ConstantTripleMapper ( property = "dataSources", constant_value = "TAIR" )
 	]

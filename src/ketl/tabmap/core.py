@@ -107,7 +107,7 @@ class RowValueMapper ( ValueMapper ):
 
 			def value ( self, row_dict: dict [ str, Any ], converter: ValueConverter = None ) -> Any | None:
 				return parent.value ( row_dict, converter )		
-		return TripleMapperWrapper ()
+		return TripleMapperWrapper ().with_column_ids ( self.column_ids )
 	
 # /RowValueMapper
 
@@ -192,7 +192,11 @@ class ColumnValueMapper ( RowValueMapper ):
 		to :attr:`column_id`, if not provided, and the returned mapper is the more specific column triple
 		mapper.
 		"""
-		return ColumnTripleMapper ( self.column_id, property )
+		result = ColumnTripleMapper ( self.column_id, property )
+		if hasattr ( self, "_value_wrapper" ):
+			# We need to propagate this too
+			result.with_value_wrapper ( self._value_wrapper )
+		return result
 
 # /ColumnValueMapper
 
@@ -215,98 +219,11 @@ class ColumnTripleMapper ( ColumnValueMapper, RowTripleMapper ):
 		If the property (ID) is omitted, it defaults to `column_id`.
 		"""
 		# We don't call super() here, cause we don't want to mess up with the damn MRO.
+		# Introduce an initialisation helper in ColumnValueMapper if needed.
 		ColumnValueMapper.__init__ ( self, column_id )
 
-		# Similarly, We're not calling the RowTripleMapper's constructor, 
-		# introduce an initialisation helper if needed.
+		# Similarly, We're not calling the RowTripleMapper's constructor
 		self._init ( property if property else column_id )
-
-
-class _IdColumnValueMapper ( ColumnValueMapper ):
-	"""
-	TODO: remove, as explained in #2
-
-	A :class:`ketl.tabmap.ColumnValueMapper` to be used for mapping the values of a column to triple IDs.
-
-	This is the same as :class:`ketl.tabmap.ColumnValueMapper`, except its default value converter is
-	:class:`ketl.IdentityValueConverter`, and sanity checks against null/empty values are added to
-	`value()`.
-	"""
-	def __init__ ( 
-		self, 
-		column_id: str, 
-		value_converter: ValueConverter | None = None,
-		pre_serializers: PreSerializers | None = None,
-		spark_data_type: DataType | None = None
-	):
-		# As explained in ValueMapper.__init__, pre-serialisers need to be checked against not being
-		# added twice.
-		super().__init__ ( 
-			column_id, 
-			value_converter if value_converter else IdentityValueConverter ( pre_serializers ),
-			pre_serializers if not value_converter else None,
-			spark_data_type
-		)
-
-	def value ( self, row_dict: dict [ str, Any ] ) -> str:
-		v = super ().value ( row_dict )
-		if not v: raise ValueError ( f"IdColumnValueMapper: null/empty ID value for column '{self.column}' in row {row_dict}" )
-		return v
-	
-
-	@classmethod
-	def from_extractor ( 
-		cls,
-		extractor: callable [ dict [ str, Any ], Any ],
-		column_id: str,
-		value_converter: ValueConverter | None = None,
-		pre_serializers: PreSerializers | None = None,
-		spark_data_type: DataType | None = None
-	) -> RowValueMapper:
-		"""
-		It's like :class:`ketl.tabmap.RowValueMapper.from_extractor`, but with the default value converter set to
-		:class:`ketl.IdentityValueConverter`
-		"""
-		if not value_converter: 
-			value_converter = IdentityValueConverter ( pre_serializers )
-			pre_serializers = None
-
-		return super ().from_extractor ( 
-			extractor, [ column_id ], value_converter, pre_serializers, spark_data_type
-		)
-	
-	@classmethod
-	def for_node_id ( 
-		cls,
-		node_type: str,
-		column_id: str,
-		prefix: str = None,
-		value_converter: ValueConverter | None = None,
-		pre_serializers: PreSerializers | None = None,
-		spark_data_type: DataType | None = None
-	) -> RowValueMapper:
-		"""
-		Helper to build a :class:`ketl.tabmap.IdColumnValueMapper` for node IDs, by prefixing a column value with the node type and
-		other options.
-		"""
-
-		return cls.from_extractor (
-			extractor = lambda row: IdColumnValueMapper.build_node_id ( node_type, row[column_id], prefix ),
-			column_id = column_id,
-			value_converter = value_converter,
-			pre_serializers = pre_serializers,
-			spark_data_type = spark_data_type
-		)
-	
-	@classmethod
-	def build_node_id ( cls, node_type: str, node_id: str, prefix: str = None ) -> str:
-		"""
-		Simple helper to build a common node ID from the common node composite key.
-		"""
-		if not prefix: prefix = ""
-		return f"{prefix}{node_type}:{node_id}"
-	
-# /IdColumnValueMapper
 
 
 class SparkDataFrameMapper:
@@ -354,7 +271,7 @@ class SparkDataFrameMapper:
 		self.id_mapper = id_mapper
 
 		# Let's setup the mappers
-		self.mapper_components = mapper_components
+		self._set_mapper_components ( mapper_components )
 
 		# Now, let's see what we have for the ID mapper
 		#
@@ -482,12 +399,11 @@ class SparkDataFrameMapper:
 	@property
 	def mapper_components ( self ) -> list [ RowTripleMapper | ConstantTripleMapper ]:
 		"""
-		All the mappers used in this mapper, both row and constant ones.
+		Read-only property telling all the mappers used in this mapper, both row and constant ones.
 		"""
 		return self._row_mappers + self._const_prop_mappers
 	
-	@mapper_components.setter
-	def mapper_components ( self, mappers: list [ RowTripleMapper | ConstantTripleMapper ] | None ) -> None:
+	def _set_mapper_components ( self, mappers: list [ RowTripleMapper | ConstantTripleMapper ] | None ) -> None:
 		"""
 		Sets all the row value and constant mappers. After this, they're available both as `all_mappers` 
 		and `row_mappers` + `const_prop_mappers`.
@@ -633,12 +549,5 @@ class TabFileMapper:
 		Convenience property to get all the mappers from the internal :class:`ketl.tabmap.SparkDataFrameMapper`.
 		"""
 		return self.data_frame_mapper.mapper_components
-	
-	@mapper_components.setter
-	def mapper_components ( self, mappers: list [ RowTripleMapper | ConstantTripleMapper ] | None ) -> None:
-		"""
-		Convenience setter to set all the mappers in the internal :class:`ketl.tabmap.SparkDataFrameMapper`.
-		"""
-		self.data_frame_mapper.mapper_components = mappers
-	
+		
 # /TabFileMapper
