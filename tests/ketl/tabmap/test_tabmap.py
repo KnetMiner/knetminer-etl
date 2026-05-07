@@ -9,7 +9,7 @@ from pyspark.sql.types import IntegerType, StringType
 from ketl.core import (ConstantTripleMapper, GraphTriple,
                        IdentityValueConverter)
 from ketl.spark.utils import assertDataFrameEqualX
-from ketl.tabmap.core import (ColumnValueMapper,
+from ketl.tabmap.core import (ColumnTripleMapper, ColumnValueMapper,
                               RowTripleMapper, RowValueMapper,
                               SparkDataFrameMapper, TabFileMapper)
 
@@ -86,7 +86,7 @@ class TestRowTripleMapper:
 		triple_id = "edge1"
 		row = { "gene accession": "gene001", "protein accession": "prot001" }
 
-		mapper = tbhelpers.row_value_mapper ( extractor ).to_triple_mapper ( prop )
+		mapper = tbhelpers.row_triple_mapper ( extractor, prop )
 		
 		mapped_triple = mapper.triple ( triple_id, row )
 		expected_triple_id = GraphTriple ( triple_id, prop, extractor ( row ) )
@@ -170,23 +170,38 @@ class TestColumnValueMapper:
 
 class TestColumnTripleMapper:
 	def test_basics ( self ):
-		cmap = ColumnValueMapper ( "name" ).to_triple_mapper ( "hasName" )
+		cmap = ColumnTripleMapper ( "name", "hasName" )
 		test_value = "Alice"
 		row = { "name": test_value, "age": 20, "foo": "bar" }
-		rec = cmap.triple ( "N001", row )
-		assert_that ( rec, "triple() returns a triple" ).is_not_none ()
-		assert_that ( rec.id, "triple() has correct id" ).is_equal_to ( "N001" )
-		assert_that ( rec.key, "triple() has correct key" ).is_equal_to ( "hasName" )
-		assert_that ( rec.value, "triple() has correct value" ).is_equal_to ( test_value )
+		triple = cmap.triple ( "N001", row )
+		assert_that ( triple, "triple() returns a triple" ).is_not_none ()
+		assert_that ( triple.id, "triple() has correct id" ).is_equal_to ( "N001" )
+		assert_that ( triple.key, "triple() has correct key" ).is_equal_to ( "hasName" )
+		assert_that ( triple.value, "triple() has correct value" ).is_equal_to ( test_value )
+
+	def test_default_property_id ( self ):
+		# Either form is valid
+		cmap_name = ColumnTripleMapper ( "name" )
+		cmap_age = ColumnValueMapper ( "age" ).to_triple_mapper ()
+
+		test_id, test_name, test_age = "N001", "Alice", 20
+		row = { "name": test_name, "age": test_age }
+
+		triple_name = cmap_name.triple ( test_id, row )
+		triple_age = cmap_age.triple ( test_id, row )
+
+		for triple, expected_triple in [ ( triple_name, GraphTriple ( test_id, "name", test_name ) ), ( triple_age, GraphTriple ( test_id, "age", test_age ) ) ]:
+			assert_that ( triple, "triple() returns a triple" ).is_equal_to ( expected_triple )
 
 	def test_missing_column ( self ):
+		# That's an alternative way to define them
 		cmap = ColumnValueMapper ( "name" ).to_triple_mapper ( "hasName" )
 		row = { "age": 20, "foo": "bar" }
 		rec = cmap.triple ( "N001", row )
 		assert_that ( rec, "triple() returns None for missing column" ).is_none ()
 		
 	def test_empty_row ( self ):
-		cmap = ColumnValueMapper ( "name" ).to_triple_mapper ( "hasName" )
+		cmap = ColumnTripleMapper ( "name", "hasName" )
 		row = {}
 		rec = cmap.triple ( "N001", row )
 		assert_that ( rec, "triple() returns None for empty row" ).is_none ()

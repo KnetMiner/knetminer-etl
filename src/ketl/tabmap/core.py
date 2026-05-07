@@ -21,12 +21,13 @@ log = logging.getLogger ( __name__ )
 
 class RowValueMapper ( ValueMapper ):
 	"""
-	Row-oriented value mapper.
+	Row-oriented value mapper (Abstract class).
 
 	Maps a row to a value, based on one or more column values.
 	"""
 	def __init__ ( self ):
-		super().__init__ ()
+		# We don't call super(), since this is used in multiple inheritance
+		ValueMapper.__init__ ( self )
 		self.column_ids: list [ str ] | None = None
 
 	@abstractmethod
@@ -111,7 +112,7 @@ class RowValueMapper ( ValueMapper ):
 
 class RowTripleMapper ( RowValueMapper, PropertyMapperMixin ):
 	"""
-	Row-oriented property mapper.
+	Row-oriented property mapper (Abstract class).
 	
 	This is similar to :class:`ketl.PropertyMapperMixin`, and it can be used to make graph triple
 	mappers from tabular format mappers.
@@ -155,7 +156,7 @@ class ColumnValueMapper ( RowValueMapper ):
 		self,
 		column_id: str, 
 	):
-		super().__init__ ()
+		RowValueMapper.__init__ ( self )
 		self.with_column_ids ( [ column_id ] )
 
 	def value ( self, row_dict: dict [ str, Any ], converter: ValueConverter = None ) -> Any | None:
@@ -182,7 +183,41 @@ class ColumnValueMapper ( RowValueMapper ):
 		This is a convenience property that wraps the first element of :attr:`column_ids`.
 		"""
 		return self.column_ids [ 0 ]
+	
+	def to_triple_mapper ( self, property: str = None ) -> "ColumnTripleMapper":
+		"""
+		This is like :class:`ketl.tabmap.RowValueMapper.to_triple_mapper`, except the property defaults
+		to :attr:`column_id`, if not provided, and the returned mapper is the more specific column triple
+		mapper.
+		"""
+		return ColumnTripleMapper ( self.column_id, property )
+
 # /ColumnValueMapper
+
+
+
+class ColumnTripleMapper ( ColumnValueMapper, RowTripleMapper ):
+	"""
+	Column-oriented triple mapper. 
+	
+	This is to be used to map a column value from a table row into a graph triple.
+
+	You can instantiate this directly, or use :meth:`ketl.tabmap.ColumnValueMapper.to_triple_mapper` 
+	"""
+	def __init__ ( 
+		self,
+		column_id: str, 
+		property: str|None = None
+	):
+		"""
+		If the property (ID) is omitted, it defaults to `column_id`.
+		"""
+		# We don't call super() here, cause we don't want to mess up with the damn MRO.
+		ColumnValueMapper.__init__ ( self, column_id )
+
+		# Similarly, We're not calling the RowTripleMapper's constructor, 
+		# introduce an initialisation helper if needed.
+		self._init ( property if property else column_id )
 
 
 class _IdColumnValueMapper ( ColumnValueMapper ):

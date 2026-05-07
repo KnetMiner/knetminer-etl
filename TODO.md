@@ -58,8 +58,9 @@
 * [ ] Remove it. As said above, With the new design, this is just a `RowValueMapper` (including a `ColumnValueMapper`) playing the role of ID mapper (assigned to the `id_mapper` field of `SparkDataFrameMapper`).
 
 ## `ColumnMapper`
-* ~~[X] Rename to `ColumnTripleMapper`~~
-* [X] Remove. `RowValueMapper.to_triple_mapper()` can be used instead.
+* [X] Rename to `ColumnTripleMapper`
+* [X] Add `RowValueMapper.to_triple_mapper()` and `ColumnValueMapper.to_triple_mapper()` as a specialisation of the former (which deals with default property ID = column ID and returns a more specific `ColumnTripleMapper`).
+
 
 ## Build functions
 

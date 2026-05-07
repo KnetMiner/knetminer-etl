@@ -35,6 +35,16 @@ def row_value_mapper (
 	return FunRowValueMapper ()
 
 
+def row_triple_mapper (
+	fun: Callable [ [ dict[ str, Any ] ], Any|None ],
+	property: str
+) -> RowTripleMapper:
+	"""
+	A simple helper that chains :func:`row_value_mapper` and :meth:`ketl.tabmap.RowValueMapper.to_triple_mapper`.
+	"""
+	return row_value_mapper ( fun ).to_triple_mapper ( property )
+
+
 def edge_source_row_triple_mapper ( 
 	extractor: Callable [ [ dict[ str, Any ] ], Any | None ] | RowValueMapper | str
 ) -> RowTripleMapper:
