@@ -3,10 +3,9 @@ Helpers used to build mappers and other entities from the KETL core.
 """
 
 from collections.abc import Callable
-from sys import prefix
 from typing import Any
 
-from ketl.core import ConstantTripleMapper, GraphTriple
+from ketl.core import ConstantTripleMapper, GraphTriple, PropertyMapperMixin, ValueConverter
 
 def type_triple_mapper ( type_value: str ) -> ConstantTripleMapper:
 	"""
@@ -29,3 +28,19 @@ def string_value_wrapper ( prefix: str = "", postfix: str = "" ) -> Callable[ [A
 		return prefix + value + postfix
 	
 	return filter_fun
+
+def converter_if_needed ( property: str | PropertyMapperMixin, converter: ValueConverter|None = None ) -> ValueConverter | None:
+	"""
+	Helper to return a converter for property keys that aren't special keys (eg, ID) and are likely
+	to be used with custom node/edge properties.
+
+	If the converter is omitted, it uses the default (when necessary), returned by 
+	:meth:`ketl.core.ValueConverter.get_default()`.
+  """
+	if isinstance ( property, PropertyMapperMixin ):
+		property = property.property
+	if not property:
+		raise ValueError ( "converter_if_needed() requires a non-empty property key or a PropertyMapperMixin" )
+	if property in ( GraphTriple.ID_KEY, GraphTriple.TYPE_KEY, GraphTriple.FROM_KEY, GraphTriple.TO_KEY ):
+		return None
+	return converter or ValueConverter.get_default ()

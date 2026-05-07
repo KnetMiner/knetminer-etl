@@ -16,6 +16,8 @@ from ketl.core import (ConstantTripleMapper, GraphTriple,
                        PropertyMapperMixin, ValueConverter)
 from ketl.spark.utils import df_save
 
+import ketl.helpers as khelper
+
 log = logging.getLogger ( __name__ )
 
 
@@ -55,13 +57,15 @@ class RowValueMapper ( ValueMapper ):
 
 	def with_value_wrapper ( self, value_wrapper: Callable[ [Any], Any ] ) -> "RowValueMapper":
 		"""
-		Returns a new :class:`ketl.tabmap.RowValueMapper` that applies the provided `value_wrapper` to 
-		the value returned by this mapper.
+		Changes the mapper so that it applies the provided `value_wrapper` to 
+		the value returned by :meth:`value()`. 
 
 		This can be useful for applications like adding prefixes/postfixed, trimming strings or discarding
 		invalid values (by returning None).
 
 		See also helper wrappers in :mod:`ketl.helpers`.
+
+		This is a fluent style setter, it returns `self`.
 
 		TODO: test.
 		"""
@@ -172,7 +176,7 @@ class ColumnValueMapper ( RowValueMapper ):
 		"""
 		if self.column_id not in row_dict: return None
 		value = row_dict.get ( self.column_id )
-		if converter: value = converter.convert ( value )
+		if converter: value = converter.serialize ( value )
 		return value
 	
 	@property
@@ -336,38 +340,43 @@ class SparkDataFrameMapper:
 	def __init__ ( 
 		self, 
 		id_mapper: RowValueMapper | AutoEdgeId | None, 
-		row_mappers: list[ RowTripleMapper ] = None,
-		const_prop_mappers: list[ ConstantTripleMapper ] = None ):
+		mapper_components: list[ RowTripleMapper|ConstantTripleMapper ] | None,
+	):
 		"""
-		@param id_mapper: the :class:`ketl.tabmap.ColumnValueMapper` to build the triple ID.
-		  If it's None, it will use :meth:`ketl.tabmap.RowValueMapper.for_edge_id_auto`.
-			If it's :class:`ketl.tabmap.SparkDataFrameMapper.AutoEdgeId`, it will use auto-edge with
-			the given prefix.
-			**WARNING**: these only makes sense for relationship/edge mappers, not for nodes.
+		## Parameters
 
-		@param column_mapper_list: a list of :class:`ketl.tabmap.ColumnTripleMapper` to build the triple/relationship properties.
-		  The order of this must match the order of the columns in the input DataFrame.
+		- `id_mapper`: the :class:`ketl.tabmap.RowValueMapper` to build the triple ID.
+		If it's AutoEdgeId or None, it will use :func:`ketl.tabmap.helper.edge_auto_id_row_value_mapper`
+		with the given prefix. **WARNING**: these only makes sense for relationship/edge mappers, not for nodes.
 
-		@param const_properties: a set of constant properties to add to each triple set (ie, each node or relationship).
-		  This is useful to add properties like :py:attr:`ketl.GraphProperty.TYPE_KEY`.
+		- `mapper_components`: a list of row value mappers or constant triple mappers, to be used to build the
+		result. This constructor creates `row_mappers` and `const_prop_mappers` from this list, to be used internally
+		and as a convenience to the outside.
 		"""
 		self.id_mapper = id_mapper
 
-		self.row_mappers = row_mappers if row_mappers else []
-		self.const_prop_mappers = const_prop_mappers if const_prop_mappers else []
+		# Let's setup the mappers
+		self.mapper_components = mapper_components
 
+		# Now, let's see what we have for the ID mapper
+		#
 		if not self.id_mapper: self.id_mapper = SparkDataFrameMapper.AutoEdgeId ()
-
 		if isinstance ( self.id_mapper, SparkDataFrameMapper.AutoEdgeId ):
 			prefix = self.id_mapper.prefix
 			
-			self.id_mapper = RowValueMapper.for_edge_id_auto (
-				self.const_prop_mappers + self.row_mappers,
-				prefix = prefix
-			)
+			# TODO: This is a dirty trick to avoid circular imports. We should rearrange the tabmap modules,
+			# but I'm not sure I should send this class and TabFileMapper in a separate module, 
+			# just because of this issue.
+			from ketl.tabmap.helpers import edge_auto_id_row_value_mapper
 
-		self._row_mapper_keys = [ col_id for cmap in self.row_mappers for col_id in cmap.column_ids ]
-		self._row_mapper_keys.extend ( self.id_mapper.column_ids )
+			self.id_mapper = edge_auto_id_row_value_mapper ( self.mapper_components )
+
+			if prefix:
+				self.id_mapper.with_value_wrapper ( khelper.string_value_wrapper ( prefix = prefix ) )
+
+		# This prepares the feature, the rest has to be initialised by map()
+		self.use_column_ids = False
+		self._row_mapper_keys = None
 
 
 	def map ( self, df: DataFrame ) -> DataFrame:
@@ -390,20 +399,24 @@ class SparkDataFrameMapper:
 			if not triple_id: return []
 
 			mapped_row = [] # id, key, value
-			for row_mapper in self.row_mappers:
-				triple = row_mapper.triple ( triple_id, row_dict )
+			for row_mapper in self._row_mappers:
+				triple = row_mapper.triple ( triple_id, row_dict, khelper.converter_if_needed ( row_mapper ) )
 				if triple is None: continue
 				mapped_row.append ( [ triple_id, triple.key, triple.value ] )
 
 			# And now the constants
-			for const_mapper in self.const_prop_mappers:
-				triple = const_mapper.triple ( triple_id )
+			for const_mapper in self._const_prop_mappers:
+				triple = const_mapper.triple ( triple_id, khelper.converter_if_needed ( const_mapper ) )
 				if triple is None: continue
 				mapped_row.append ( [ triple_id, triple.key, triple.value ] )
 
 			return mapped_row
-		
-		# Here we go
+
+
+		### The body
+		#
+
+		self._init_row_mapper_keys ( df )
 
 		out_schema = ArrayType (
 			StructType ([
@@ -423,6 +436,68 @@ class SparkDataFrameMapper:
 		  # Explode the 'triplet' struct into its columns
 
 		return out_df
+
+
+	def with_use_column_ids ( self, use_column_ids: bool = True ) -> "SparkDataFrameMapper":
+		"""
+		If set, :meth:`RowValueMapper.column_ids` are used to project only the columns from the input DataFrame that are
+		needed. By default (this flag set to False), all such columns are loaded, passed to the mappers and then they
+		decide which ones to use. In most cases you'll be using all or almost all the input's columns, and even
+		if that isn't the case, the default behaviour can be a performance issue only with very wide tables.
+		
+		This is a fluent style setter, it returns `self`.
+		"""
+		self.use_column_ids = use_column_ids
+		return self
+	
+	def _init_row_mapper_keys ( self, df: DataFrame ) -> None:
+		if not self.use_column_ids:
+			# We use all the columns, so we just take them from the DF schema.
+			self._row_mapper_keys = df.schema.names
+			return
+		
+		# First, enforce that all the mappers have them
+		for row_mapper in self._row_mappers:
+			if not row_mapper.column_ids:
+				raise ValueError ( f"SparkDataFrameMapper: use_column_ids is True, but mapper {row_mapper} doesn't have column_ids set" )
+
+		self._row_mapper_keys = [ col_id for cmap in self._row_mappers for col_id in cmap.column_ids ]
+		self._row_mapper_keys.extend ( self.id_mapper.column_ids )
+	
+
+	@property
+	def row_mappers ( self ) -> list [ RowTripleMapper ]:
+		"""
+		Read-only property telling the row mappers used in this mapper.
+		This is set by :meth:`mapper_components` (or by the constructor).
+		"""
+		return self._row_mappers
+	
+	@property
+	def const_prop_mappers ( self ) -> list [ ConstantTripleMapper ]:
+		"""
+		Read-only property telling the constant property mappers used in this mapper.
+		This is set by :meth:`mapper_components` (or by the constructor).
+		"""
+		return self._const_prop_mappers
+	
+	@property
+	def mapper_components ( self ) -> list [ RowTripleMapper | ConstantTripleMapper ]:
+		"""
+		All the mappers used in this mapper, both row and constant ones.
+		"""
+		return self._row_mappers + self._const_prop_mappers
+	
+	@mapper_components.setter
+	def mapper_components ( self, mappers: list [ RowTripleMapper | ConstantTripleMapper ] | None ) -> None:
+		"""
+		Sets all the row value and constant mappers. After this, they're available both as `all_mappers` 
+		and `row_mappers` + `const_prop_mappers`.
+		"""
+		if mappers is None: mappers = []
+		self._row_mappers = [ m for m in mappers if isinstance ( m, RowTripleMapper ) ] 
+		self._const_prop_mappers = [ m for m in mappers if isinstance ( m, ConstantTripleMapper ) ]
+
 # /SparkDataFrameMapper
 
 
@@ -444,9 +519,8 @@ class TabFileMapper:
 	def __init__ ( 
 		self,
 
-		id_mapper: RowValueMapper | SparkDataFrameMapper.AutoEdgeId | None,
-		row_mappers: list[ ColumnTripleMapper ] = None,
-		const_prop_mappers: list[ ConstantTripleMapper ] | None = None,
+		id_mapper: RowValueMapper | SparkDataFrameMapper.AutoEdgeId | None, 
+		mapper_components: list[ RowTripleMapper|ConstantTripleMapper ] | None,
 
 		spark_options: Dict[str, Any] | None = None,
 	):
@@ -466,7 +540,7 @@ class TabFileMapper:
 		"""
 
 		self.data_frame_mapper = SparkDataFrameMapper ( 
-			id_mapper, row_mappers, const_prop_mappers
+			id_mapper, mapper_components
 		)
 		self.spark_options = spark_options
 
@@ -565,9 +639,11 @@ class TabFileMapper:
 	# /map
 
 	@property
-	def id_mapper ( self ) -> IdColumnValueMapper:
+	def id_mapper ( self ) -> RowValueMapper:
 		"""
 		Convenience property to get the ID mapper from the internal :class:`ketl.tabmap.SparkDataFrameMapper`.
+		Note that if this mapper was initialised with :class:`ketl.tabmap.SparkDataFrameMapper.AutoEdgeId`, 
+		this will return the corresponding mapper that was created to support this mode. 
 		"""
 		return self.data_frame_mapper.id_mapper
 	
@@ -585,4 +661,19 @@ class TabFileMapper:
 		Convenience property to get the constant property mappers from the internal :class:`ketl.tabmap.SparkDataFrameMapper`.
 		"""
 		return self.data_frame_mapper.const_prop_mappers
+	
+	@property
+	def mapper_components ( self ) -> list [ RowTripleMapper | ConstantTripleMapper ]:
+		"""
+		Convenience property to get all the mappers from the internal :class:`ketl.tabmap.SparkDataFrameMapper`.
+		"""
+		return self.data_frame_mapper.mapper_components
+	
+	@mapper_components.setter
+	def mapper_components ( self, mappers: list [ RowTripleMapper | ConstantTripleMapper ] | None ) -> None:
+		"""
+		Convenience setter to set all the mappers in the internal :class:`ketl.tabmap.SparkDataFrameMapper`.
+		"""
+		self.data_frame_mapper.mapper_components = mappers
+	
 # /TabFileMapper

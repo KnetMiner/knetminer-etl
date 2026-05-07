@@ -208,7 +208,6 @@ class TestColumnTripleMapper:
 # /TestColumnTripleMapper
 
 
-@pytest.mark.skip ( "TODO: re-enable after TestSparkDataFrameMapper refactoring" )
 @pytest.mark.integration
 @pytest.mark.usefixtures ( "spark_session" )
 class TestSparkDataFrameMapper:
@@ -221,13 +220,13 @@ class TestSparkDataFrameMapper:
 		]
 		df = spark_session.createDataFrame ( data )
 
-		id_mapper = IdColumnValueMapper ( "id" )
+		id_mapper = ColumnValueMapper ( "id" )
 		name_mapper = ColumnTripleMapper ( "name", "hasName" )
 		age_mapper = ColumnTripleMapper ( "age" )
 		
-		row_mappers = [ name_mapper, age_mapper ]
+		mapper_components = [ name_mapper, age_mapper ]
 		
-		df_mapper = SparkDataFrameMapper ( id_mapper, row_mappers = row_mappers )
+		df_mapper = SparkDataFrameMapper ( id_mapper, mapper_components = mapper_components )
 		triples_df = df_mapper.map ( df )
 		log.debug ( f"test_map(), mapped triples: {triples_df.collect()}" )
 
@@ -255,28 +254,43 @@ class TestSparkDataFrameMapper:
 		]
 		df = spark_session.createDataFrame ( data )
 
-		id_mapper = IdColumnValueMapper ( "id" )
+		id_mapper = ColumnValueMapper ( "id" )
+
 		name_mapper = ColumnTripleMapper ( "name", "hasName" )
 		age_mapper = ColumnTripleMapper ( "age" )
 		col_mappers = [ name_mapper, age_mapper ]
 
-		type_mapper = ConstantTripleMapper.for_type ( "Person" )
+		type_mapper = khelpers.type_triple_mapper ( "Person" )
 		source_mapper = ConstantTripleMapper ( "source", "TestDataset" )
 		const_mappers = [ type_mapper, source_mapper ]
+
+		mapper_components = col_mappers + const_mappers
 		
-		df_mapper = SparkDataFrameMapper ( id_mapper, col_mappers, const_mappers )
+		df_mapper = SparkDataFrameMapper ( id_mapper, mapper_components = mapper_components )
 		
 		triples_df = df_mapper.map ( df )
 		log.info ( f"test_map_constants (), mapped triples: {triples_df.collect()}" )
 
-		# Query it and check type/source are there
+		# While we're here, check that mapper properties works
+		assert_that ( set ( df_mapper.row_mappers ), "row_mappers property is correct" )\
+			.is_equal_to ( set ( col_mappers ) )
+		assert_that ( set ( df_mapper.const_prop_mappers ), "const_prop_mappers property is correct" )\
+			.is_equal_to ( set ( const_mappers ) )
+		assert_that ( set ( df_mapper.mapper_components ), "mapper_components property is correct" )\
+			.is_equal_to ( set ( mapper_components ) )
 
+
+		# Query the result data
+		# 
+
+		# type/label triples
 		type_rows = triples_df.filter ( triples_df.key == GraphTriple.TYPE_KEY ).collect ()
 		assert_that ( len ( type_rows ), "Type triples are created" ).is_equal_to ( 2 )
 
 		for row in type_rows:
 			assert_that ( row.value, "Triple type value is correct" ).is_equal_to ( "Person" )
 
+		# Custom property triples
 		source_rows = triples_df.filter ( triples_df.key == "source" ).collect ()
 		assert_that ( len ( source_rows ), "Source triples are created" ).is_equal_to ( 2 )
 		
@@ -310,40 +324,35 @@ class TestSparkDataFrameMapper:
 		]
 		df = spark_session.createDataFrame ( data )
 
-		edge_id_mapper = RowValueMapper.for_edge_id (
-			relation_type = "encodes-protein",
+		rel_type = "encodesProtein"
+
+		edge_id_mapper = tbhelpers.edge_id_row_value_mapper (
+			type_id = rel_type,
 			from_column_id = "gene accession",
 			to_column_id = "protein accession"
 		)
 
-		type_mapper = ConstantTripleMapper.for_type ( "encodes-protein" )
+		type_mapper = khelpers.type_triple_mapper ( rel_type )
 
-		from_mapper = RowTripleMapper.for_from (
-			lambda row: f"ENSEMBL:{row['gene accession']}",
-			[ "gene accession" ]
+		from_mapper = tbhelpers.edge_source_row_triple_mapper (
+			lambda row: f"ENSEMBL:{row['gene accession']}"
 		)
 
-		to_mapper = RowTripleMapper.for_to (
-			lambda row: f"UNIPROT:{row['protein accession']}",
-			[ "protein accession" ]
+		to_mapper = tbhelpers.edge_target_row_triple_mapper (
+			lambda row: f"UNIPROT:{row['protein accession']}"
 		)
 
 		def pmid_extractor ( row ):
 			# If it's optional, you've to handle missing values, return None to tell the upstream
 			# layers to skip this triple.
-			ref = row.get ( "reference", None )
+			ref = row.get ( "reference" )
 			return f"PMID:{ref}" if ref else None
 
-		pmid_mapper = RowTripleMapper.from_extractor (
-			extractor = pmid_extractor,
-			property = "hasPMID",
-			column_ids = [ "reference" ]
-		)
+		pmid_mapper = tbhelpers.row_triple_mapper ( fun = pmid_extractor, property = "hasPMID" )
 
 		df_mapper = SparkDataFrameMapper (
 			id_mapper = edge_id_mapper,
-			row_mappers = [ from_mapper, to_mapper, pmid_mapper ],
-			const_prop_mappers = [ type_mapper ]
+			mapper_components = [ from_mapper, to_mapper, pmid_mapper, type_mapper ],
 		)
 
 		triples_df = df_mapper.map ( df )
@@ -351,14 +360,14 @@ class TestSparkDataFrameMapper:
 		log.debug ( f"test_from_extractor_row_mapper(), mapped triples: {mapped_triples}" )
 		
 		expected_triples = {
-			( "encodes-protein_GENE001_PROT001", GraphTriple.TYPE_KEY, "encodes-protein" ),
-			( "encodes-protein_GENE001_PROT001", GraphTriple.FROM_KEY, "ENSEMBL:GENE001" ),
-			( "encodes-protein_GENE001_PROT001", GraphTriple.TO_KEY, "UNIPROT:PROT001" ),
-			( "encodes-protein_GENE001_PROT001", "hasPMID", '"PMID:122030434"' ),
+			( f"{rel_type}:GENE001-PROT001", GraphTriple.TYPE_KEY, rel_type ),
+			( f"{rel_type}:GENE001-PROT001", GraphTriple.FROM_KEY, "ENSEMBL:GENE001" ),
+			( f"{rel_type}:GENE001-PROT001", GraphTriple.TO_KEY, "UNIPROT:PROT001" ),
+			( f"{rel_type}:GENE001-PROT001", "hasPMID", '"PMID:122030434"' ),
 			
-			( "encodes-protein_GENE002_PROT002", GraphTriple.TYPE_KEY, "encodes-protein" ),
-			( "encodes-protein_GENE002_PROT002", GraphTriple.FROM_KEY, "ENSEMBL:GENE002" ),
-			( "encodes-protein_GENE002_PROT002", GraphTriple.TO_KEY, "UNIPROT:PROT002" )
+			( f"{rel_type}:GENE002-PROT002", GraphTriple.TYPE_KEY, rel_type ),
+			( f"{rel_type}:GENE002-PROT002", GraphTriple.FROM_KEY, "ENSEMBL:GENE002" ),
+			( f"{rel_type}:GENE002-PROT002", GraphTriple.TO_KEY, "UNIPROT:PROT002" )
 		}
 
 		# Note: contains_only() with lists was giving some error about string formatting
@@ -378,14 +387,15 @@ class TestSparkDataFrameMapper:
 			{ "gene accession": "GENE002", "protein accession": "PROT002" }
 		]
 		df = spark_session.createDataFrame ( data )
+		rel_type = "encodesProtein"
 
 		df_mapper = SparkDataFrameMapper (
 			id_mapper = SparkDataFrameMapper.AutoEdgeId ( prefix = "test:" ),
-			row_mappers = [ 
-				ColumnTripleMapper.for_from ( column_id = "gene accession" ),
-				ColumnTripleMapper.for_to ( column_id = "protein accession" )
-			],
-			const_prop_mappers = [ ConstantTripleMapper.for_type ( "encodes-protein" ) ]
+			mapper_components = [ 
+				tbhelpers.edge_source_row_triple_mapper ( "gene accession" ),
+				tbhelpers.edge_target_row_triple_mapper ( "protein accession" ),
+				khelpers.type_triple_mapper ( rel_type )
+			]
 		)
 
 		triples_df = df_mapper.map ( df )
@@ -393,13 +403,13 @@ class TestSparkDataFrameMapper:
 		log.debug ( f"test_auto_edge_id(), mapped triples: {mapped_triples}" )
 		
 		expected_triples = {
-			( "test:encodes-protein_GENE001_PROT001", GraphTriple.TYPE_KEY, "encodes-protein" ),
-			( "test:encodes-protein_GENE001_PROT001", GraphTriple.FROM_KEY, "GENE001" ),
-			( "test:encodes-protein_GENE001_PROT001", GraphTriple.TO_KEY, "PROT001" ),
+			( f"test:{rel_type}:GENE001-PROT001", GraphTriple.TYPE_KEY, rel_type ),
+			( f"test:{rel_type}:GENE001-PROT001", GraphTriple.FROM_KEY, "GENE001" ),
+			( f"test:{rel_type}:GENE001-PROT001", GraphTriple.TO_KEY, "PROT001" ),
 			
-			( "test:encodes-protein_GENE002_PROT002", GraphTriple.TYPE_KEY, "encodes-protein" ),
-			( "test:encodes-protein_GENE002_PROT002", GraphTriple.FROM_KEY, "GENE002" ),
-			( "test:encodes-protein_GENE002_PROT002", GraphTriple.TO_KEY, "PROT002" )
+			( f"test:{rel_type}:GENE002-PROT002", GraphTriple.TYPE_KEY, rel_type ),
+			( f"test:{rel_type}:GENE002-PROT002", GraphTriple.FROM_KEY, "GENE002" ),
+			( f"test:{rel_type}:GENE002-PROT002", GraphTriple.TO_KEY, "PROT002" )
 		}
 
 		assert_that ( set ( mapped_triples ), "Mapped triples are as expected" )\

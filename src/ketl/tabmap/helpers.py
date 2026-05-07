@@ -6,10 +6,7 @@ from collections.abc import Callable
 from typing import Any
 
 from ketl.core import ConstantTripleMapper, GraphTriple, ValueConverter, ValueMapper
-import ketl.helpers as khelpers
 from ketl.tabmap.core import ColumnValueMapper, RowTripleMapper, RowValueMapper
-
-from pyspark.sql.types import DataType
 
 
 def row_value_mapper ( 
@@ -29,7 +26,7 @@ def row_value_mapper (
 
 		def value ( self, row_dict: dict [ str, Any ], converter: ValueConverter = None ) -> Any | None:
 			value = fun ( row_dict )
-			if converter: value = converter.convert ( value )
+			if converter: value = converter.serialize ( value )
 			return value
 	
 	return FunRowValueMapper ()

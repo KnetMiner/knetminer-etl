@@ -75,9 +75,14 @@
 * [X] `edge_target_column_triple_mapper(...)`: makes a `ColumnTripleMapper`, uses 1 col only
 
 ## `SparkDataFrameMapper`
-* [ ] Simplify the constructor by removing the separation between `row_mappers` and `const_prop_mappers`, it is able to split an initial mixed list.
 * [ ] Add a `use_column_ids` flag = False. The mapper's column_ids are only used if this is set (and their presence is enforced in that case), else use all the DF columns. Document that the latter can be inefficient for wide tables, but given that's not usually the case, it's a good default.
 * [ ] Must take control of when to apply the configured converter.
 
 ## `triples_2_pg_df()`
 * [ ] see if we can remove `triples_type` and instead we can build a mixed result of nodes and edges (by playing with Spark SQL, eg, `CASE WHEN`).
+
+## `spark_data_type`
+* We've got it very wrong. A spark data type is associated to a column, **not** to a `RowValueMapper` (or `RowTripleMapper`), since the latter can map from multiple columns.
+* Moreover, a set of spark data types could be applied to **any** data frame, not just the one coming from a CSV/`TabFileMapper` (it's used to cast the columns of an initial DF).
+* [ ] So, we need an helper, `SparkDataTypes`, which can host a dict of col_id -> data type and `cast_df( df ) -> df`
+* [ ] This could be given to `TabFileMapper`, to let it use it with the loaded DF. `SparkDataFrameMapper` doesn't need it, since the DF it receives can be pre-processed by the caller, if ever needed (as in fact, `TabFileMapper` will do).
