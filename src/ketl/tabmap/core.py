@@ -12,7 +12,7 @@ from pyspark.sql.types import (ArrayType, DataType, StringType, StructField,
                                StructType)
 
 from ketl.core import (ConstantTripleMapper, GraphTriple,
-                       IdentityValueConverter, ValueMapper, PreSerializers,
+                       IdentityValueConverter, SparkDataFrameTypes, ValueMapper, PreSerializers,
                        PropertyMapperMixin, ValueConverter)
 from ketl.spark.utils import df_save
 
@@ -104,8 +104,6 @@ class RowValueMapper ( ValueMapper ):
 		class TripleMapperWrapper ( RowTripleMapper ):
 			def __init__ ( self ):
 				super().__init__ ( property )
-				self.with_spark_data_type ( parent.spark_data_type )\
-					.with_column_ids ( parent.column_ids )
 
 			def value ( self, row_dict: dict [ str, Any ], converter: ValueConverter = None ) -> Any | None:
 				return parent.value ( row_dict, converter )		
@@ -537,12 +535,21 @@ class TabFileMapper:
 
 		- spark_options: options passed to :meth:`SparkSession.read.options`. If null, we use 
 			:attr:`DEFAULT_SPARK_OPTIONS`. If specified, it will override those defaults.
+
+			
+		## Attributes:
+
+		- `data_frame_types`: when set with a :class:`ketl.SparkDataFrameTypes`, it uses the 
+		defined col -> spec mappings to deal with the data frame that is loaded from the file. As said
+		elsewhere, at the moment we use this to allow for casting the input columns into desired types. 
+		**WARNING**: this is only applied if the 'inferSchema' option is set to False.
 		"""
 
 		self.data_frame_mapper = SparkDataFrameMapper ( 
 			id_mapper, mapper_components
 		)
 		self.spark_options = spark_options
+		self.spark_data_frame_types: SparkDataFrameTypes | None = None
 
 	def map ( self, spark: SparkSession, file_path: str, out_path: str | None = None ) -> DataFrame:
 		"""
@@ -560,19 +567,6 @@ class TabFileMapper:
 		- out_path: if given, the mapped data frame is saved (as parquet) using the checkpointing	functions 
 		  in `ketl.spark.utils`, as an intermediate that allows for building incremental workflows in Snakemake or
 			similar frameworks. 
-
-
-		## Notes
-
-		* The "inferSchema" option and :attr:`ketl.ValueMapper.spark_data_type`: independently of the value of this option,
-		  we always load the columns in the mappers only, discarding any other columns that may be in the file.
-			If this option is false, we additionally use the :attr:`ketl.ValueMapper.spark_data_type` attributes to
-			cast the original columns to the desired types. If a column mapper doesn't have this attribute set,
-			we leave the original column untouched (ie, loaded by Spark with its defaults).
-
-		* **WARNING**: it's possible to map the same column header more than once, with multiple column mappers having
-			the same `column` attribute. However, in this case, the `spark_data_type` must be consistent and we enforce
-			it.
 		"""
 
 		# Fix the options, override defaults if requested
@@ -589,40 +583,11 @@ class TabFileMapper:
 
 		# Work out an explicit schema.
 		#
-		# We need to add withColumn() transformations to the initial DF.
-		# We can't just set a schema based on out mappers, since this would force the schema
-		# in the same order as the mappers, eg, if column 1 is 'foo', but the first mapper is 
-		# for 'bar', we would be broken.
-		# 
-
-		all_row_mappers = self.data_frame_mapper.row_mappers + [ self.data_frame_mapper.id_mapper ]
-
 		if not opts.get ( "inferSchema", True ):
-			# Check spark_data_type consistency
-			spark_data_types = {}
-			for row_mapper in all_row_mappers:
-				for col_id in row_mapper.column_ids:
-					if col_id not in spark_data_types:
-						spark_data_types [ col_id ] = row_mapper.spark_data_type
-						continue
-					if spark_data_types [ col_id ] != row_mapper.spark_data_type:
-						raise ValueError (
-							f"TabFileMapper: inconsistent spark_data_type values for the column '{col_id}'"
-						)
-
-		# Good, now build the schema with the listed columns, with casting as required.
-		df_col_map = {}
-		for row_mapper in all_row_mappers:
-			for col_id in row_mapper.column_ids:
-				if col_id not in df.columns:
-					raise ValueError ( f"TabFileMapper: input file missing required column '{col_id}'" )
-				df_col = df [ col_id ]
-				if not opts.get ( "inferSchema", True ) and row_mapper.spark_data_type:
-					df_col = df_col.cast ( row_mapper.spark_data_type )
-
-				df_col_map [ col_id ] = df_col
-
-		df = df.withColumns ( df_col_map )
+			if self.spark_data_frame_types:
+				log.info ( f"Casting the input file to the specified SparkDataFrameTypes" )
+				df = self.spark_data_frame_types.cast_df ( df )
+				log.debug ( f"Schema after casting: {df.schema}" )
 
 		# And eventually do the mapping
 		triple_df = self.data_frame_mapper.map ( df )

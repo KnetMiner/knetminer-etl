@@ -7,7 +7,7 @@ from pyspark.sql import DataFrame
 from pyspark.sql.types import IntegerType, StringType
 
 from ketl.core import (ConstantTripleMapper, GraphTriple,
-                       IdentityValueConverter)
+                       IdentityValueConverter, SparkDataFrameTypes)
 from ketl.spark.utils import assertDataFrameEqualX
 from ketl.tabmap.core import (ColumnTripleMapper, ColumnValueMapper,
                               RowTripleMapper, RowValueMapper,
@@ -417,7 +417,6 @@ class TestSparkDataFrameMapper:
 	# /test_auto_edge_id
 # /TestSparkDataFrameMapper
 
-@pytest.mark.skip ( "TODO: re-enable after TestSparkDataFrameMapper refactoring" )
 @pytest.mark.integration
 @pytest.mark.usefixtures ( "spark_session" )
 class TestTabFileMapper:
@@ -428,7 +427,6 @@ class TestTabFileMapper:
 		argvalues = [ False, True ], 
 	)
 	def	test_mapping_tsv ( self, spark_session, is_infer_schema: bool ):
-		spark_data_type = IntegerType () if not is_infer_schema else None
 		
 		# This also shows how a configuration in a real case would look like.
 		# A config file might define a constant like tb_mapper here and then this
@@ -436,20 +434,27 @@ class TestTabFileMapper:
 		# to map() below.
 		#
 		tb_mapper = TabFileMapper (
-			id_mapper = IdColumnValueMapper ( column_id = "accession" ),    
-			row_mappers = [
+			id_mapper = ColumnValueMapper ( column_id = "accession" ),    
+			mapper_components = [
 				ColumnTripleMapper ( column_id = "name", property = "hasGeneName" ),
 				ColumnTripleMapper ( "accession", "hasAccession" ),
 				ColumnTripleMapper ( "chromosome", "hasChromosomeId" ),
-				ColumnTripleMapper ( "begin", "hasChromosomeBegin", spark_data_type = spark_data_type ),
-				ColumnTripleMapper ( "end", "hasChromosomeEnd", spark_data_type = spark_data_type )
-			],
-			const_prop_mappers = [
-				ConstantTripleMapper.for_type ( "Gene" ),
+				ColumnTripleMapper ( "begin", "hasChromosomeBegin" ),
+				ColumnTripleMapper ( "end", "hasChromosomeEnd" ),
+				khelpers.type_triple_mapper ( "Gene" ),
 				ConstantTripleMapper ( property = "source", constant_value = "TestTSV" )
 			],
 			spark_options = { "inferSchema": is_infer_schema }
 		)
+
+		if not is_infer_schema:
+			# This is how you can customise the input if Spark doesn't get it (usually it does)
+			tb_mapper.spark_data_frame_types = SparkDataFrameTypes (
+				column_specs = {
+					"begin": SparkDataFrameTypes.ColumnSpec ( IntegerType () ),
+					"end": SparkDataFrameTypes.ColumnSpec ( IntegerType () )
+				}
+			)
 
 		test_file_path = os.path.dirname ( os.path.abspath ( __file__ + "/../.." ) ) \
 			+ "/resources/test-genes.tsv"		
@@ -495,33 +500,5 @@ class TestTabFileMapper:
 			.extracting ( 'id', 'key', 'value' )\
 			.contains ( ( test_id, key, val ) )
 	# /test_mapping_tsv
-
-
-	def test_inconsistent_mappers_on_same_row ( self, spark_session ):
-		tb_mapper = TabFileMapper (
-			id_mapper = IdColumnValueMapper ( column_id = "accession" ),    
-			row_mappers = [
-				ColumnTripleMapper ( column_id = "name", property = "hasGeneName" ),
-				ColumnTripleMapper ( "accession", "hasAccession" ),
-				ColumnTripleMapper ( "chromosome", "hasChromosomeId" ),
-				ColumnTripleMapper ( "begin", "hasChromosomeBegin", spark_data_type = IntegerType () ),
-				ColumnTripleMapper ( "end", "hasChromosomeEnd", spark_data_type = IntegerType () ),
-				# add the same column mapped to a different type, to cause an error
-				ColumnTripleMapper ( "begin", "hasChromosomeBeginStr", spark_data_type = StringType () )
-			],
-			const_prop_mappers = [
-				ConstantTripleMapper.for_type ( "Gene" ),
-				ConstantTripleMapper ( property = "source", constant_value = "TestTSV" )
-			],
-			# spark_options = { "inferSchema": True } should be implicit
-		)
-
-		test_file_path = os.path.dirname ( os.path.abspath ( __file__ ) ) + "/resources/test-genes.tsv"
-		# Should raise ValueError, let's check with assertpy
-		assert_that ( 
-			lambda: tb_mapper.map ( spark_session, test_file_path ), 
-			"map() raises a ValueError over inconsistent mappers"
-		).raises ( ValueError )
-	# /test_inconsistent_mappers_on_same_row
 
 # /TestTabFileMapper

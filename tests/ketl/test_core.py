@@ -4,8 +4,10 @@ from assertpy import assert_that
 import pytest
 
 from ketl.core import (ConstantTripleMapper, GraphProperty, GraphTriple,
-                       JSONBasedValueConverter)
+                       JSONBasedValueConverter, SparkDataFrameTypes)
 import ketl.helpers as khelpers
+
+from pyspark.sql.types import IntegerType, StringType
 
 log = logging.getLogger ( __name__ )
 
@@ -146,3 +148,28 @@ class TestConstantPropertyMapper:
 		assert_that ( triple.key, "Triple key is as expected" ).is_equal_to ( GraphTriple.TYPE_KEY )
 		assert_that ( triple.value, "Triple value is as expected" ).is_equal_to ( type_label )
 # /TestConstantPropertyMapper
+
+
+class TestSparkDataFrameTypes:
+	def test_cast_df ( self, spark_session ):
+
+		test_data = [ ("1", "Alice"), ("2", "Bob") ]
+		df = spark_session.createDataFrame ( test_data, [ "id", "name" ] )
+
+		spark_types = SparkDataFrameTypes ( 
+			column_specs = { 
+				"id": SparkDataFrameTypes.ColumnSpec ( IntegerType () ),
+				# Ignored when te DF doesn't have it
+				"foo": SparkDataFrameTypes.ColumnSpec ( StringType () ) 
+			}
+		)
+		casted_df = spark_types.cast_df ( df )
+
+		assert_that ( casted_df.schema [ "id" ].dataType, "Column 'id' is casted to IntegerType" ).is_instance_of ( IntegerType )
+		assert_that ( casted_df.schema [ "name" ].dataType, "Column 'name' is unchanged and is StringType" ).is_instance_of ( StringType )
+
+		# Check the values too
+		expected_rows = [ (int ( id ), name ) for id, name in test_data ]
+		casted_rows = casted_df.collect ()
+		assert_that ( casted_rows, "Casted DataFrame has the expected rows" )\
+			.is_equal_to ( expected_rows )

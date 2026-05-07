@@ -7,12 +7,12 @@ Much of the implemented functionality is based on Spark.
 
 import json
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, Callable
 
 from pyspark.sql.types import DataType
-
+from pyspark.sql import DataFrame
 
 @dataclass ( frozen = True )
 class GraphProperty:
@@ -208,21 +208,7 @@ class ValueMapper ( ABC ):
 
 	TODO: clarify null/empty behaviour, aggregating mappers, interaction with serialisation.
 	"""
-
-	def __init__ ( self ):
-		self.spark_data_type: DataType | None = None
-	
-	def with_spark_data_type ( self, spark_data_type: DataType ) -> "ValueMapper":
-		"""
-		An optional Spark data type to be used in tasks like
-		reading from a CSV. Essentially, it allows for setting an explicit schema.
-
-		This is a fluent style setter, it returns `self`.
-
-		TODO: StructType.nullable
-		"""
-		self.spark_data_type = spark_data_type
-		return self
+	pass
 
 
 class PropertyMapperMixin ( ABC ):
@@ -293,3 +279,45 @@ class ConstantTripleMapper ( ValueMapper, PropertyMapperMixin ):
 		"""
 		if converter is not None: return converter.serialize ( self.constant_value )
 		return self.constant_value
+
+
+@dataclass ( frozen = True )
+class SparkDataFrameTypes:
+	"""
+	Utility to manage Spark data at column level.
+
+	For the moment, we only provide a way to cast columns to specific Spark data types, in case
+	the automatic inference of the schema doesn't work.
+
+	"""
+
+	@dataclass ( frozen = True )
+	class ColumnSpec:
+		"""
+		We use this despite we have just one thing to configure, because we might extend it.
+		"""
+		spark_type: DataType | None = None
+		"""
+		The Spark data type to cast the column to. If None, no casting is applied.
+		This is used in :meth:`ketl.core.SparkDataFrameTypes.cast_df`
+		"""
+
+	column_specs: dict [ str, ColumnSpec ] = field ( default_factory = dict )
+
+	def cast_df ( self, df: DataFrame ) -> DataFrame:
+		"""
+		Returns a new DF where the hereby-specified columns are casted to the requested types.
+
+		If the DF doesn't contain one of the specified columns, there is no effect, so a single
+		set could be used for multiple DFs.
+		"""
+		df_col_map = {}
+		for col in df.columns:
+			if not col in self.column_specs: continue
+			col_spec = self.column_specs [ col ]
+			if not col_spec.spark_type: continue
+			spark_type = col_spec.spark_type
+			df_col_map [ col ] = df [ col ].cast ( spark_type )
+		
+		if not df_col_map: return df
+		return df.withColumns ( df_col_map )
