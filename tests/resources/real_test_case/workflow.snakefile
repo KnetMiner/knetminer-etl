@@ -110,7 +110,7 @@ rule triples_2_pg_df:
 		# TODO: it sucks, move it to an helper receiving the path array and PG type
 		pg_df = None
 		spark_session = wf_config.get_spark_session()
-		for paths, pg_type in (input.nodes, PGElementType.NODE), (input.edges, PGElementType.EDGE):
+		for paths in input.nodes, input.edges:
 			triples_df = None
 			for path in paths:
 				path = df_path ( path ) # from the check path to the actual path
@@ -120,15 +120,7 @@ rule triples_2_pg_df:
 
 			# This can get a Parquet path and save, but here we combine nodes and edges and 
 			# save at the end
-			this_pg_df = triples_2_pg_df ( triples_df, pg_type, spark = spark_session )
-
-			# If it is a node DF, it needs empty columns about 'from' and 'to', 
-			# so that the union with edge DFs works.
-			# TODO: ABSOLUTELY to move to some utility!
-			if pg_type == PGElementType.NODE:
-				this_pg_df = this_pg_df.withColumn ( "from", lit ( None ) )\
-				  .withColumn ( "to", lit ( None ) )
-
+			this_pg_df = triples_2_pg_df ( triples_df, spark = spark_session )
 			pg_df = this_pg_df if pg_df is None else pg_df.unionByName ( this_pg_df )
 		
 		# As said above

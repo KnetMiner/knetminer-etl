@@ -59,7 +59,7 @@ class TestTriples2PgDf ():
 			log.info ( "Test Node triples:\n%s", df.toPandas().to_markdown() )
 
 			# And its mapping
-			cls.nodes_pg_df = triples_2_pg_df ( df, PGElementType.NODE )
+			cls.nodes_pg_df = triples_2_pg_df ( df )
 			
 		def create_edges_pg_df ():
 			log.info ( "Creating test edges" )
@@ -88,7 +88,7 @@ class TestTriples2PgDf ():
 			log.info ( "TestEdge triples:\n%s", df.toPandas().to_markdown() )
 
 			# Mapping, as above
-			cls.edges_pg_df = triples_2_pg_df ( df, PGElementType.EDGE )
+			cls.edges_pg_df = triples_2_pg_df ( df )
 		
 		create_nodes_pg_df ()
 		create_edges_pg_df ()

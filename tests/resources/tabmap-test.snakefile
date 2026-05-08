@@ -61,12 +61,7 @@ rule node_triples_2_pg_df:
 				spark_session.read.parquet ( path ) if not triples_df \
 				else triples_df.unionByName ( spark_session.read.parquet ( path ) )
 
-		pg_df = triples_2_pg_df (
-			triples_df,
-			PGElementType.NODE,
-			spark = spark_session,
-			out_path = output[0]
-		)
+		pg_df = triples_2_pg_df ( triples_df, spark = spark_session, out_path = output[0] )
 
 
 rule encodings_triples_2_json_pg:
@@ -86,16 +81,8 @@ rule encodings_triples_2_json_pg:
 	output:
 		f"{KETL_OUT}/edges-pg.json"
 	run:
-		triples_df = spark_session.read.parquet ( 
-			df_path ( input[0] )
-		)
-
-		pg_df = triples_2_pg_df (
-			triples_df,
-			PGElementType.EDGE,
-			spark = spark_session
-		)
-
+		triples_df = spark_session.read.parquet ( df_path ( input[0] ) )
+		pg_df = triples_2_pg_df ( triples_df, spark = spark_session )
 		pg_df_2_pg_jsonl ( pg_df, spark_session, output[0] )
 
 

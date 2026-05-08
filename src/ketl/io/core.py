@@ -15,7 +15,6 @@ log = logging.getLogger ( __name__ )
 
 def triples_2_pg_df (
 	triples_df_or_path: DataFrame | str,
-	triples_type: PGElementType,
 	spark: SparkSession | None = None,
 	out_path: str | None = None
 ) -> DataFrame:
@@ -23,10 +22,9 @@ def triples_2_pg_df (
 	Converts a DataFrame of triples (ie, with the columns 'id', 'key') into a DataFrame reflecting the PG-Format.
 
 	## Parameters:
+
 	:param triples_df_or_path: The input DataFrame with the triples, or the path to a (Parquet) file where to
 	load it from. When a path is given, `spark` must be provided too. 
-
-	:param triples_type (PGElementType): The type of elements represented by the triples (nodes or edges).
 
 	:param spark: when `triples_df_or_path` is a path, the Spark session used to load the Parquet file 
 	(mandatory param in that case).
@@ -37,7 +35,8 @@ def triples_2_pg_df (
 	## Returns:
 	A data frame reflecting the structure of PG-Format, ie, with the columns:
 
-	- type (string): equals to `triples_type`
+	- type (string): either `PGElementType.NODE` or `PGElementType.EDGE`, populated based on the presence of :py:attr:`ketl.GraphProperty.FROM_KEY` 
+		in the input triples. TODO: as said in other comments, we still need to validate both from/to are present.
 	- id (string): from triples_df.id
 	- labels (string array): an array, populated with the merge from triples_df.key == :py:attr:`ketl.GraphProperty.TYPE_KEY` values
 	- from (string), to (string): present when triples_type is `PGElementType.EDGE`, and values taken from 
@@ -49,23 +48,19 @@ def triples_2_pg_df (
 		the actual values. These are unserialised by :func:`ketl.pg_df_2_pgjsonl`.
 	"""
 
-	# Sanity checks
-	if not isinstance(triples_type, PGElementType):
-		raise ValueError ( f"triples_2_pg_df(): invalid triples_type: {triples_type}" )
-
-	# The DF that collects the node labels/types
+	# Let the show begin
 	triples_df = df_load ( triples_df_or_path, spark )
 
+	# The DF that collects the node labels/types
 	type_df = triples_df.filter ( F.col ( "key" ) == GraphProperty.TYPE_KEY )
 	type_labels_df = type_df.groupBy ( "id" ).agg ( F.collect_set ( "value" ).alias ( "labels" ) )
 
-	# The DFs about 'from' and 'to'
-	if triples_type == PGElementType.EDGE:
-		from_df = triples_df.filter ( F.col ( "key" ) == GraphProperty.FROM_KEY )
-		to_df = triples_df.filter ( F.col ( "key" ) == GraphProperty.TO_KEY )
-
-		from_values_df = from_df.groupBy ( "id" ).agg ( F.first ( "value" ).alias ( "from" ) )
-		to_values_df = to_df.groupBy ( "id" ).agg ( F.first ( "value" ).alias ( "to" ) )
+	# The DFs about 'from' and 'to'. This are always created, later the element 'type' is 
+	# established based on their presence.
+	from_df = triples_df.filter ( F.col ( "key" ) == GraphProperty.FROM_KEY )
+	to_df = triples_df.filter ( F.col ( "key" ) == GraphProperty.TO_KEY )
+	from_values_df = from_df.groupBy ( "id" ).agg ( F.first ( "value" ).alias ( "from" ) )
+	to_values_df = to_df.groupBy ( "id" ).agg ( F.first ( "value" ).alias ( "to" ) )
 
 	# The property DF in 3 steps:
 	# 
@@ -97,20 +92,23 @@ def triples_2_pg_df (
 	# Labels
 	result_df = result_df.join ( type_labels_df, on = "id", how = "left" )
 
-  # edge endpoints
-	if triples_type == PGElementType.EDGE:
-		result_df = result_df.join ( from_values_df, on = "id", how = "left" )
-		result_df = result_df.join ( to_values_df, on = "id", how = "left" )
+	# Edge endpoints - always join (will be null for nodes)
+	result_df = result_df.join ( from_values_df, on = "id", how = "left" )
+	result_df = result_df.join ( to_values_df, on = "id", how = "left" )
 
-	# properties (defaults to {})
+	# Properties (defaults to {})
 	result_df = result_df.join ( properties, on = "id", how = "left" )
 	result_df = result_df.withColumn (
 		"properties",
 		F.when ( F.col ( "properties" ).isNull(), F.create_map() ).otherwise ( F.col( "properties" ) )
 	)
 
-	# node/edge identifier
-	result_df = result_df.withColumn ( "type", F.lit ( triples_type.value ) )
+	# node/edge identifier - auto-detect based on presence of FROM_KEY
+	result_df = result_df.withColumn (
+		"type",
+		F.when ( F.col ( "from" ).isNotNull(), F.lit ( PGElementType.EDGE.value ) )
+		 .otherwise ( F.lit ( PGElementType.NODE.value ) )
+	)
 
 	# TODO, validations (as separate function):
 	# - id
