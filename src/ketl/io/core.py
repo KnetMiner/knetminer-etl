@@ -114,7 +114,7 @@ def triples_2_pg_df (
 
 	# TODO, validations (as separate function):
 	# - id
-	# - #labels > 0
+	# - #labels > 0 and = 1 for edges (concern of neoloader)
 	# - from/to present if EDGE, and not null
 
 	# Save if requested
