@@ -58,13 +58,6 @@ rule neo_loader:
 	"""
 	input:
 		f"{KETL_OUT}/knowledge-graph.json"
-		# Forces sequential rule triggering
-		# TODO: it definitely needs async_pg_jsonl_neo_loader to be able to manage 
-		# the double call on its own.
-		#lambda wc: (
-		#	[] if wc.pg_type == "nodes"
-		#	else f"{KETL_OUT}/knowledge-graph.done.nodes"
-		#)
 	output:
 		f"{KETL_OUT}/knowledge-graph.done.edges"
 	run:
