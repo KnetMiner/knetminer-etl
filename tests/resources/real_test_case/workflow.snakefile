@@ -43,7 +43,7 @@ rule all:
 	This just triggers the neo_loader rule for nodes and edges.
 	"""
 	input:
-		f"{KETL_OUT}/knowledge-graph.done.edges"
+		f"{KETL_TMP}/knowledge-graph.done.edges"
 
 
 rule neo_loader:
@@ -58,7 +58,7 @@ rule neo_loader:
 	input:
 		f"{KETL_OUT}/knowledge-graph.json"
 	output:
-		f"{KETL_OUT}/knowledge-graph.done.edges"
+		f"{KETL_TMP}/knowledge-graph.done.edges"
 	run:
 		n_elems = pg_jsonl_neo_loader (
 			pg_jsonl_source = Path ( input[0] ),

@@ -187,6 +187,71 @@ class ValueMapper ( ABC ):
 	TODO: clarify null/empty behaviour, aggregating mappers, interaction with serialisation.
 	"""
 
+	def __init__ ( self ):
+		self._value_wrapper: Callable[ [Any], Any ] | None = None
+	
+	@abstractmethod
+	def value ( self, *args, **kwargs ) -> Any|None:
+		"""
+		Abstract reference to the method that does the mapping job. This takes parameters from some source
+		(eg, a row dictionary) and returns the mapped value.
+		
+		A subclass's override should set the actual signature, **however** it should include the `converter`
+		parameter in the named arguments (last one is recommended), with None default and type :class:`ketl.ValueConverter`.
+
+		If a converter is provided in a call, then the method must first do the mapping and then massage the
+		mapped value through the converter's `serialize()` method as the last step before returning it. 
+		This is because some KETL components (eg, the Spark-based ones) require string representations of values.
+
+		See also :meth:`with_value_wrapper`, which replaces the initial `value()` with new transformations.
+		"""
+		pass
+
+	def with_value_wrapper ( self, value_wrapper: Callable[ [Any], Any ] ) -> "ValueMapper":
+		"""
+		Adds a value transformer to the initial :meth:`value` method (and chains it to an existing transformer).
+
+		This is useful to add transformations to the mapped value, such as adding a prefix or suffix,
+		setting defaults, ignoring invalid values (by returning None).
+
+		This replaces the initial `value()` method with a new one that
+		- applies the original `value()` to the original input parameters, except the `converter` parameter, if present
+		- then applies `value_wrapper` (possibly, after all previously added wrappers)`
+		- Finally, if the `converter` was given to `value()`, it serialises the value coming from the above chain
+
+		This allows to separate the extraction of a raw value from a source, the transformation(s) of the 
+		raw value and the serialisation. Note that if your transformation needs to do something with the converter
+		(but, why?!), you shouldn't use this method, rather, override `value()` in a subclass.
+
+		See also helper wrappers in :mod:`ketl.helpers`.
+
+		For convenience, this method follows a fluent style, ie, it returns the mapper itself, 
+		so that you can chain it call to the class instantiation and to multiple wrapper definitions.
+		"""
+		if self._value_wrapper is not None:
+			# We had setup a wrapper before, now we just need to chain
+			old_wrapper = self._value_wrapper
+			self._value_wrapper = lambda v: value_wrapper ( old_wrapper ( v ) )
+			return self
+
+		self._value_wrapper = value_wrapper
+		# We now have a wrapper, change the old value() method to use it
+		old_value = self.value
+		def new_value ( *args, **kwargs ) -> Any|None:
+			# Take out the converter parameter, if provided:
+			converter = None
+			if "converter" in kwargs:
+				converter: ValueConverter = kwargs [ "converter" ]
+				del kwargs [ "converter" ]
+
+			# Then extract the value and pass it trough the wrappers chain, possibly apply the converter at the end
+			result = self._value_wrapper ( old_value ( *args, **kwargs ) )
+			if converter is not None: result = converter.serialize ( result )
+			return result
+		
+		self.value = new_value	
+		return self
+
 
 class PropertyMapperMixin ( ABC ):
 	"""

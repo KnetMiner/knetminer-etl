@@ -170,6 +170,22 @@ class TestRowTripleMapper:
 
 		assert_that ( mapped_triple, "edge_target_row_triple_mapper() returns the expected triple" )\
 			.is_equal_to ( expected_triple )
+		
+	def test_with_value_wrapper ( self ):
+		prefix = "name:"
+		test_value = "Alice"
+		test_id = "N001"
+		test_prop = "hasName"
+
+		mapper = tbhelpers.row_triple_mapper ( lambda row: row [ "name" ], test_prop )\
+			.with_value_wrapper ( lambda v: prefix + v if v else None)
+		
+		expected_triple = GraphTriple ( test_id, test_prop, prefix + test_value )
+		assert_that ( 
+			mapper.triple ( test_id, { "name": test_value } ), 
+			"with_value_wrapper() returns the expected triple"
+		).is_equal_to ( expected_triple )
+		
 # /TestRowTripleMapperMixin
 
 
@@ -399,7 +415,7 @@ class TestSparkDataFrameMapper:
 			ref = row.get ( "reference" )
 			return f"PMID:{ref}" if ref else None
 
-		pmid_mapper = tbhelpers.row_triple_mapper ( fun = pmid_extractor, property = "hasPMID" )
+		pmid_mapper = tbhelpers.row_triple_mapper ( extractor = pmid_extractor, property = "hasPMID" )
 
 		df_mapper = SparkDataFrameMapper (
 			id_mapper = edge_id_mapper,

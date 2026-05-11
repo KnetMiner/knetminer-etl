@@ -51,27 +51,17 @@ class RowValueMapper ( ValueMapper ):
 		TODO: test the serialisation.
 		"""
 
-	def with_value_wrapper ( self, value_wrapper: Callable[ [dict[str, Any]], Any ] ) -> "RowValueMapper":
+	def _with_value_wrapper ( self, value_wrapper: Callable[ [Any], Any ] ) -> "RowValueMapper":
 		"""
+		TODO: remove 
+		
 		Changes the mapper so that it applies the provided `value_wrapper` to 
 		the value returned by :meth:`value()`. 
 
 		This can be useful for applications like adding prefixes/postfixes, trimming strings or discarding
 		invalid values (by returning None).
 
-		Note that the new `value()` method will work like this:
-		- the original value() is applied without passing it the converter (not even if it's provided)
-		- then your wrapper is applied to the originally returned value, and the converter isn't involved here either
-		  (your wrapper has the `row_dict` parameter only)
-		- The final value is then serialised if the converter is provided.
-		
-		This keeps the wrapper simple and useful in most cases. If you need to deal with the serialisation on
-		your own, don't use this method, rather override `value()` in an extension or use the
-		`row_value_mapper` helper.
-
 		If this method is called multiple times, then multiple wrappers are composed/chained (first-to-last).
-		This happens with the same approach as above, ie, first all the value functions are applied without
-		any serialisation, finally the converter is involved. This makes the chaining clear and simple.
 
 		See also helper wrappers in :mod:`ketl.helpers`.
 
@@ -199,7 +189,7 @@ class ColumnValueMapper ( RowValueMapper ):
 		mapper.
 		"""
 		result = ColumnTripleMapper ( self.column_id, property )
-		if hasattr ( self, "_value_wrapper" ):
+		if self._value_wrapper is not None:
 			# We need to propagate this too
 			result.with_value_wrapper ( self._value_wrapper )
 		return result

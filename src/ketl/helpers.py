@@ -17,19 +17,19 @@ def type_triple_mapper ( type_value: str ) -> ConstantTripleMapper:
 	return ConstantTripleMapper ( property = GraphTriple.TYPE_KEY, constant_value = type_value )
 
 
-def string_value_wrapper ( prefix: str = "", postfix: str = "" ) -> Callable[ [Any], str|None ]:
+def string_value_wrapper ( prefix: str = "", postfix: str = "" ) -> Callable[ [dict[str, Any]], str|None ]:
 	"""
 	Helper to build a value filter that adds a prefix to a value extracted by a :class:`ketl.core.ValueMapper`.
 	The filter also converts non-string values to strings, and discards None or empty values (by returning None).
 	"""
-	def filter_fun ( value: Any ) -> Any | None:
+	def wrapper ( value: Any ) -> str | None:
 		if value is None: return None
 		if not isinstance ( value, str ):
 			value = str ( value )
 		if not value: return None
 		return prefix + value + postfix
 	
-	return filter_fun
+	return wrapper
 
 def converter_if_needed ( property: str | PropertyMapperMixin, converter: ValueConverter|None = None ) -> ValueConverter | None:
 	"""

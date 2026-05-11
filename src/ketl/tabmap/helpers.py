@@ -34,21 +34,11 @@ def row_value_mapper (
 
 
 def row_triple_mapper (
-	fun: Callable [ [ dict[ str, Any ] ], Any|None ],
+	extractor: Callable [ [ dict[ str, Any ] ], Any | None ] | RowValueMapper | str,
 	property: str
 ) -> RowTripleMapper:
 	"""
 	A simple helper that chains :func:`row_value_mapper` and :meth:`ketl.tabmap.RowValueMapper.to_triple_mapper`.
-	"""
-	return row_value_mapper ( fun ).to_triple_mapper ( property )
-
-
-def edge_source_row_triple_mapper ( 
-	extractor: Callable [ [ dict[ str, Any ] ], Any | None ] | RowValueMapper | str
-) -> RowTripleMapper:
-	"""
-	Helper to build a :class:`ketl.tabmap.RowTripleMapper` for an edge source (ie, for a triple with the 
-	:attr:`GraphTriple.FROM_KEY` property).
 
 	The extractor can be a function to pick a value from a row dictionary, an existing row value mapper
 	to be extended with a 'from'-related triple mapper, or a string that represents a column ID and 
@@ -62,8 +52,19 @@ def edge_source_row_triple_mapper (
 	else:
 		row_val_map = row_value_mapper ( fun = extractor )
 
-	return row_val_map.to_triple_mapper ( property = GraphTriple.FROM_KEY )
+	return row_val_map.to_triple_mapper ( property = property )
 
+
+def edge_source_row_triple_mapper ( 
+	extractor: Callable [ [ dict[ str, Any ] ], Any | None ] | RowValueMapper | str
+) -> RowTripleMapper:
+	"""
+	Helper to build a :class:`ketl.tabmap.RowTripleMapper` for an edge source (ie, for a triple with the 
+	:attr:`GraphTriple.FROM_KEY` property).
+
+	This leverages :func:`row_triple_mapper`, so the `extractor` param has the same meaning.
+	"""
+	return row_triple_mapper ( extractor, property = GraphTriple.FROM_KEY )
 
 def edge_target_row_triple_mapper (
 	extractor: Callable [ [ dict[ str, Any ] ], Any | None ] | RowValueMapper | str
@@ -74,15 +75,7 @@ def edge_target_row_triple_mapper (
 
 	This works the same as :func:`edge_source_row_triple_mapper`.
 	"""
-	row_val_map = None
-	if isinstance ( extractor, RowValueMapper ):
-		row_val_map = extractor
-	elif isinstance ( extractor, str ):
-		row_val_map = ColumnValueMapper ( column_id = extractor )
-	else:
-		row_val_map = row_value_mapper ( fun = extractor )
-
-	return row_val_map.to_triple_mapper ( property = GraphTriple.TO_KEY )
+	return row_triple_mapper ( extractor, property = GraphTriple.TO_KEY )
 
 
 def edge_id_row_value_mapper (
