@@ -16,10 +16,15 @@ import neo4j
 from pyspark.sql import SparkSession
 
 
-def get_spark_session ():
+def get_spark_session ( app_name_postfix: str = "" ) -> SparkSession:
+	"""
+	It's recommened that you give one app name per session, eg, per rule
+	"""
+	if app_name_postfix and not app_name_postfix.startswith ( "_" ):
+		app_name_postfix = "_" + app_name_postfix
 	return SparkSession.builder\
 		.master ( "local[*]" )\
-		.appName ( "test_ketl_snake" )\
+		.appName ( "test_ketl_snake" + app_name_postfix )\
 		.getOrCreate()
 
 def create_neo4j_driver () -> neo4j.AsyncDriver:

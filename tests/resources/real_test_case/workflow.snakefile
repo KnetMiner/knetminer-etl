@@ -94,12 +94,12 @@ rule triples_2_json_pg:
 		f"{KETL_OUT}/knowledge-graph.json"
 	run:
 		# Work out nodes together and then edge together
-		spark_session = wf_config.get_spark_session()
-		all_triples_df = df_union_all_by_name ( *input.nodes, *input.edges, spark = spark_session )
+		with wf_config.get_spark_session ( rule ) as spark_session:
+			all_triples_df = df_union_all_by_name ( *input.nodes, *input.edges, spark = spark_session )
 
-		# Then turn it all into PG
-		pg_df = triples_2_pg_df ( all_triples_df, spark = spark_session )
-		pg_df_2_pg_jsonl ( pg_df, spark_session, output[0] )
+			# Then turn it all into PG
+			pg_df = triples_2_pg_df ( all_triples_df, spark = spark_session )
+			pg_df_2_pg_jsonl ( pg_df, spark_session, output[0] )
 
 
 rule map_ensembl_plants_genes:
@@ -116,11 +116,11 @@ rule map_ensembl_plants_genes:
 	run:
 		# TODO: blah, move it to an helper getting input, list[mapper, out_path]
 		#
-		spark_session = wf_config.get_spark_session()
-		E2U_ENSEMBL_GENE_MAPPER.map ( spark_session, input[0], out_path = output[0] )
-		# These have node/edge mappers
-		E2U_ENSEMBL_GENE_ACCESSION_MAPPERS [ 0 ].map ( spark_session, input[0], out_path = output[1] )
-		E2U_ENSEMBL_GENE_ACCESSION_MAPPERS [ 1 ].map ( spark_session, input[0], out_path = output[2] )
+		with wf_config.get_spark_session ( rule ) as spark_session:
+			E2U_ENSEMBL_GENE_MAPPER.map ( spark_session, input[0], out_path = output[0] )
+			# These have node/edge mappers
+			E2U_ENSEMBL_GENE_ACCESSION_MAPPERS [ 0 ].map ( spark_session, input[0], out_path = output[1] )
+			E2U_ENSEMBL_GENE_ACCESSION_MAPPERS [ 1 ].map ( spark_session, input[0], out_path = output[2] )
 
 
 rule map_ensembl_plants_proteins:
@@ -136,10 +136,10 @@ rule map_ensembl_plants_proteins:
 		df_check_path ( f"{KETL_TMP}/protein-accession-links-triples.parquet" )
 
 	run:
-		spark_session = wf_config.get_spark_session()
-		E2U_ENSEMBL_PROTEIN_MAPPER.map ( spark_session, input[0], out_path = output[0] )
-		E2U_UNIPROT_ACCESSION_MAPPERS [ 0 ].map ( spark_session, input[0], out_path = output[1] )
-		E2U_UNIPROT_ACCESSION_MAPPERS [ 1 ].map ( spark_session, input[0], out_path = output[2] )
+		with wf_config.get_spark_session ( rule ) as spark_session:
+			E2U_ENSEMBL_PROTEIN_MAPPER.map ( spark_session, input[0], out_path = output[0] )
+			E2U_UNIPROT_ACCESSION_MAPPERS [ 0 ].map ( spark_session, input[0], out_path = output[1] )
+			E2U_UNIPROT_ACCESSION_MAPPERS [ 1 ].map ( spark_session, input[0], out_path = output[2] )
 
 
 rule map_ensembl_plants_encodes:
@@ -151,5 +151,7 @@ rule map_ensembl_plants_encodes:
 	output:
 		df_check_path ( f"{KETL_TMP}/gene2protein.parquet" )
 	run:
-		spark_session = wf_config.get_spark_session()
-		E2U_GENE2PROTEIN_MAPPER.map ( spark_session, input[0], out_path = output[0] )
+		# Closing the session allows for clean operations.
+		# Giving it a distinct app name has a few benefits, such as better logging.
+		with wf_config.get_spark_session( rule ) as spark_session:
+			E2U_GENE2PROTEIN_MAPPER.map ( spark_session, input[0], out_path = output[0] )
