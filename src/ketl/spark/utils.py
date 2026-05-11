@@ -12,6 +12,7 @@ to a DF identifies the data and can be used to reload it later.
 Internally, we perform Spark-specific optimisations, which are kept transparent to the client.
 """
 
+import functools
 import logging
 from typing import TYPE_CHECKING, List, Union
 
@@ -201,7 +202,7 @@ def df_new_partition_size ( estimated_df_size: int, target_partition_size: int =
 def assertDataFrameEqualX ( 
 	df1: Union[DataFrame, "pandas.DataFrame", "pyspark.pandas.DataFrame", List[Row]],
 	df2: Union[DataFrame, "pandas.DataFrame", "pyspark.pandas.DataFrame", List[Row]], 
-	msg = "", 
+	msg: str = "", 
 	**kwargs 
 ):
 	"""
@@ -260,3 +261,33 @@ def create_spark_session_from_config ( config: dict[str, any]|None = None ) -> S
 
 	return builder.getOrCreate() if get_or_create else builder.create()
 	
+
+def df_union_all_by_name ( 
+	*dfs_or_paths: DataFrame | str, allowMissingColumns: bool = False,
+	spark: SparkSession | None = None
+) -> DataFrame:
+	"""
+	Union all the given DataFrames using :meth:`DataFrame.unionByName`, that is, matching
+	DFs by their column names.
+	
+	This is typically used to concatenate dataframes with the same or similar schemas.
+
+	If any of the inputs is a path, it is intended as a `.parquet` file path and passed 
+	to :func:`df_load` to load the corresponding DataFrame. If that's the case, 
+	`spark` can't be null.
+
+	`allowMissingColumns` is passed to :meth:`DataFrame.unionByName`, and allows to union DFs 
+	with different columns, filling missing ones with nulls.
+
+	TODO: test it (currently, it's indirectly tested in the real_test_case/workflow.snakefile).
+	"""
+	if not dfs_or_paths: raise ValueError ( "No DataFrames to union" )
+
+	dfs_itr = ( df_load ( df_or_path, spark ) for df_or_path in dfs_or_paths )
+
+	result = functools.reduce (
+		lambda df1, df2: df1.unionByName ( df2, allowMissingColumns = allowMissingColumns ),
+		dfs_itr
+	)
+
+	return result

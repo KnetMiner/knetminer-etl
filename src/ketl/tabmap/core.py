@@ -42,40 +42,12 @@ class RowValueMapper ( ValueMapper ):
 		The row_dict parameter is always guaranteed to be non-empty, since the aggregate mappers like
 		:class:`ketl.tabmap.SparkDataFrameMapper` skip empty rows.
 
-		This method can turn an initial value into a serialised string when the `converter` parameter is provided. 
-		Usually, an aggregating mapper will decide to serialise or not, based on whether it's dealing with a 
-		node/edge user property or a special key like type.
+		If `converter` is set, the method turns an initial value into a serialised string (see the docstring
+		of :class:`ketl.ValueConverter`).
 
-		When serialisation is applied, an empty string might end up returning None.
-
-		TODO: test the serialisation.
+		The method can be affected by :meth:`with_value_wrapper` (again, see `ValueMapper`).
 		"""
-
-	def _with_value_wrapper ( self, value_wrapper: Callable[ [Any], Any ] ) -> "RowValueMapper":
-		"""
-		TODO: remove 
-		
-		Changes the mapper so that it applies the provided `value_wrapper` to 
-		the value returned by :meth:`value()`. 
-
-		This can be useful for applications like adding prefixes/postfixes, trimming strings or discarding
-		invalid values (by returning None).
-
-		If this method is called multiple times, then multiple wrappers are composed/chained (first-to-last).
-
-		See also helper wrappers in :mod:`ketl.helpers`.
-
-		This is a fluent style setter, it returns `self`.
-
-		"""
-		original_value_fun = self.value
-		def value_with_wrapper ( row_dict: dict [ str, Any ], converter: ValueConverter = None ) -> Any | None:
-			value = value_wrapper ( original_value_fun ( row_dict ) )
-			if converter: value = converter.serialize ( value )
-			return value
-		self.value = value_with_wrapper
-
-		return self
+		pass
 
 	def with_column_ids ( self, column_ids: list [ str ] ) -> "RowValueMapper":
 		"""

@@ -16,7 +16,7 @@ from ketl.io.neoloader import (async_pg_jsonl_neo_loader,
                                create_neo_driver_from_config,
                                pg_jsonl_neo_loader)
 from ketl.spark.utils import (create_spark_session_from_config, df_check_path,
-                              df_path, df_save)
+                              df_path, df_save, df_union_all_by_name)
 
 # TODO: ketl logging
 
@@ -106,23 +106,11 @@ rule triples_2_pg_df:
 		df_check_path ( f"{KETL_TMP}/knowledge-graph.parquet" )
 	run:
 		# Work out nodes together and then edge together
-		# TODO: it sucks, move it to an helper receiving the path array and PG type
-		pg_df = None
 		spark_session = wf_config.get_spark_session()
-		for paths in input.nodes, input.edges:
-			triples_df = None
-			for path in paths:
-				path = df_path ( path ) # from the check path to the actual path
-				this_df = spark_session.read.parquet ( path )
-				triples_df = \
-					this_df if not triples_df else triples_df.unionByName ( this_df )
+		all_triples_df = df_union_all_by_name ( *input.nodes, *input.edges, spark = spark_session )
 
-			# This can get a Parquet path and save, but here we combine nodes and edges and 
-			# save at the end
-			this_pg_df = triples_2_pg_df ( triples_df, spark = spark_session )
-			pg_df = this_pg_df if pg_df is None else pg_df.unionByName ( this_pg_df )
-		
-		# As said above
+		# Then turn it all into PG
+		pg_df = triples_2_pg_df ( all_triples_df, spark = spark_session )
 		df_save ( pg_df, output[0] )
 
 

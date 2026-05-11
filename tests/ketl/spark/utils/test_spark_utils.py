@@ -5,8 +5,8 @@ import pytest
 from assertpy import assert_that
 from pyspark.sql import SparkSession
 
-from ketl.spark.utils import (create_spark_session_from_config, df_check_path,
-                              df_load, df_path, df_rough_size, df_save)
+from ketl.spark.utils import (assertDataFrameEqualX, create_spark_session_from_config, df_check_path,
+                              df_load, df_path, df_rough_size, df_save, df_union_all_by_name)
 
 log = logging.getLogger ( __name__ )
 
@@ -199,3 +199,33 @@ def test_create_spark_session_from_config_defaults ():
 	assert_that ( spark_session.sparkContext.appName, "Spark session has the default app name" )\
 		.is_equal_to ( "test_ketl" )
 	
+
+def test_df_union_all_by_name ( spark_session: SparkSession ):
+	"""
+	Tests :fun:`df_union_all_by_name` with a few DFs, with the same and different schemas, and with
+	both DF and path inputs.
+	"""
+	df1 = spark_session.createDataFrame ( [ (1, "Alice"), (2, "Bob") ], [ "id", "name" ] )
+	df2 = spark_session.createDataFrame ( [ (3, "Cathy"), (4, "David") ], [ "id", "name" ] )
+	df3 = spark_session.createDataFrame ( [ (5, "Eve"), (6, "Frank") ], [ "id", "name" ] )
+
+	# Save df2 to a path
+	path_df2 = f"/tmp/ketl_spark_utils_df2_{uuid.uuid4().hex[:8]}.parquet"
+	df_save ( df2, path_df2 )
+
+	# Union all three DFs, with allowMissingColumns = True
+	union_df = df_union_all_by_name ( df1, path_df2, df3, spark = spark_session )
+
+	expected_data = ( df.collect () for df in [ df1, df2, df3 ] )
+	expected_data =  list ( tuple ( row ) for df in expected_data for row in df )
+	expected_schema = set ( df1.columns + df2.columns + df3.columns )
+
+	assert_that ( set ( union_df.columns ), "Union DF has the right columns" )\
+		.is_equal_to ( expected_schema )
+	
+	assert_that ( union_df.count (), "Union DF has the right size" )\
+		.is_equal_to ( len ( expected_data ) )
+
+	assert_that ( set ( tuple ( row ) for row in union_df.collect () ), "Union DF has the right data" )\
+		.is_equal_to ( set ( expected_data ) )
+
