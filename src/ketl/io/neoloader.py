@@ -20,27 +20,26 @@ on injesting from Spark DFs. We aim at mapping to PG first and then loading, but
 with a DF as source.
 """
 
+import argparse
 import asyncio
 import concurrent
 import json
 import logging
 import os
 import re
+import sys
 from collections.abc import KeysView
 from dataclasses import dataclass, field
 from datetime import timedelta
 from enum import StrEnum
 from itertools import islice
 from pathlib import Path
-import sys
 from typing import Any, Awaitable, Callable, Iterable, TextIO
 
 import neo4j
 import tenacity
 from brandizpyes.io import async_reader_helper
 from brandizpyes.logging import ProgressLogger
-
-import argparse
 
 from ketl.config import load_config
 

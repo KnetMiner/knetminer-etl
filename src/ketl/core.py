@@ -11,8 +11,9 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, Callable
 
-from pyspark.sql.types import DataType
 from pyspark.sql import DataFrame
+from pyspark.sql.types import DataType
+
 
 @dataclass ( frozen = True )
 class GraphProperty:
@@ -147,29 +148,6 @@ class ValueConverter ( ABC ):
 		cls._default = default_converter
 
 
-class IdentityValueConverter ( ValueConverter ):
-	"""
-	TODO: probably to be removed. Proper serialisers are needed for properties and they aren't for
-	special keys.
-
-	Identity value converter for KETL.
-
-	This converter does nothing, that is, it returns the input value as-is both in serialisation
-	and unserialisation.
-
-	We use this for special properties like 'id' or :py:attr:`ketl.GraphProperty.TYPE_KEY`, 
-	where we just need to keep the original string. 
-
-	Note that this still supports pre-serialization via :attr:`pre_serializer`.
-	"""
-
-	def serialize ( self, v: Any ) -> str:
-		if v is None: return None
-		return str ( v )
-
-	def unserialize ( self, s: str ) -> Any:
-		return s
-
 class JSONBasedValueConverter ( ValueConverter ):
 	"""
 	JSON-based value converter for KETL.
@@ -208,7 +186,6 @@ class ValueMapper ( ABC ):
 
 	TODO: clarify null/empty behaviour, aggregating mappers, interaction with serialisation.
 	"""
-	pass
 
 
 class PropertyMapperMixin ( ABC ):

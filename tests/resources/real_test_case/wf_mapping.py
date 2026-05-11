@@ -8,12 +8,13 @@ This maps ENSEMBL IDs from the input TSV to gene nodes, enriching the result wit
 like the source.
 """
 
-from ketl.core import ConstantTripleMapper
-from ketl.tabmap.core import ColumnTripleMapper, ColumnValueMapper, RowTripleMapper, RowValueMapper, TabFileMapper, SparkDataFrameMapper
-from ketl.io.neoloader import NeoLoaderConfig, NeoLoaderPropertyConfig
-
 import ketl.helpers as khelpers
 import ketl.tabmap.helpers as tbhelpers
+from ketl.core import ConstantTripleMapper
+from ketl.io.neoloader import NeoLoaderConfig, NeoLoaderPropertyConfig
+from ketl.tabmap.core import (ColumnTripleMapper, ColumnValueMapper,
+                              RowValueMapper, SparkDataFrameMapper,
+                              TabFileMapper)
 
 
 def make_accession_mappers_for_source ( 

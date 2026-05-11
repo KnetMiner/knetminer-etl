@@ -5,7 +5,9 @@ Helpers used to build mappers and other entities from the KETL core.
 from collections.abc import Callable
 from typing import Any
 
-from ketl.core import ConstantTripleMapper, GraphTriple, PropertyMapperMixin, ValueConverter
+from ketl.core import (ConstantTripleMapper, GraphTriple, PropertyMapperMixin,
+                       ValueConverter)
+
 
 def type_triple_mapper ( type_value: str ) -> ConstantTripleMapper:
 	"""

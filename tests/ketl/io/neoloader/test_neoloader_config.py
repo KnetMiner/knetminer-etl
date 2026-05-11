@@ -2,19 +2,20 @@
 Tests the configuration functionality of the NeoLoader components.
 """
 
-from datetime import timedelta
 import os
-import neo4j
-import pytest
-from ketl.config import load_config
-from assertpy import assert_that
+from datetime import timedelta
 from pathlib import Path
-
-from testcontainers.neo4j import Neo4jContainer
 from typing import Generator
 
+import neo4j
+import pytest
+from assertpy import assert_that
+from testcontainers.neo4j import Neo4jContainer
 
-from ketl.io.neoloader import NeoLoaderConfig, NeoLoaderPropertyConfig, create_neo_driver_from_config
+from ketl.config import load_config
+from ketl.io.neoloader import (NeoLoaderConfig, NeoLoaderPropertyConfig,
+                               create_neo_driver_from_config)
+
 
 def test_neoloader_config ( config ):
 	cfg_dict = config["neoloader"]

@@ -1,13 +1,11 @@
 import logging
 
 from assertpy import assert_that
-import pytest
+from pyspark.sql.types import IntegerType, StringType
 
+import ketl.helpers as khelpers
 from ketl.core import (ConstantTripleMapper, GraphProperty, GraphTriple,
                        JSONBasedValueConverter, SparkDataFrameTypes)
-import ketl.helpers as khelpers
-
-from pyspark.sql.types import IntegerType, StringType
 
 log = logging.getLogger ( __name__ )
 

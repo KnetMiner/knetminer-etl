@@ -2,22 +2,18 @@
 Tabular/CSV mapping tools for KnetMiner ETLs
 """
 
-import inspect
 import logging
 from abc import abstractmethod
 from typing import Any, Callable, Dict
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import explode, udf
-from pyspark.sql.types import (ArrayType, DataType, StringType, StructField,
-                               StructType)
-
-from ketl.core import (ConstantTripleMapper, GraphTriple,
-                       SparkDataFrameTypes, ValueMapper,
-                       PropertyMapperMixin, ValueConverter)
-from ketl.spark.utils import df_save
+from pyspark.sql.types import ArrayType, StringType, StructField, StructType
 
 import ketl.helpers as khelper
+from ketl.core import (ConstantTripleMapper, GraphTriple, PropertyMapperMixin,
+                       SparkDataFrameTypes, ValueConverter, ValueMapper)
+from ketl.spark.utils import df_save
 
 log = logging.getLogger ( __name__ )
 

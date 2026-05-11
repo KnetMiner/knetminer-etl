@@ -3,11 +3,11 @@ A sample/test config of tab mappers, to be used in an ETL workflow.
 See tests/resources/tabmap-test.snakefile
 
 """
-from ketl.core import ConstantTripleMapper
-from ketl.tabmap.core import ColumnValueMapper, ColumnTripleMapper, TabFileMapper
 import ketl.helpers as khelpers
 import ketl.tabmap.helpers as tbhelpers
-
+from ketl.core import ConstantTripleMapper
+from ketl.tabmap.core import (ColumnTripleMapper, ColumnValueMapper,
+                              TabFileMapper)
 
 PROTEINS_MAPPER = TabFileMapper (
 	id_mapper = ColumnValueMapper ( column_id = "accession" ),	

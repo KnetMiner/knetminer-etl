@@ -1,10 +1,10 @@
-from pathlib import Path
+import os
 import re
+from pathlib import Path
 from typing import TextIO
 
 import yaml
 from brandizpyes.io import reader_helper
-import os
 
 
 def load_config ( yaml_source: Path|str|TextIO|None, use_unsafe_loader: bool = False ) -> dict:

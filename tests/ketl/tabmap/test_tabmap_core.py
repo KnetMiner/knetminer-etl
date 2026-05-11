@@ -11,12 +11,13 @@ from assertpy import assert_that
 from pyspark.sql import DataFrame
 from pyspark.sql.types import IntegerType
 
-from ketl.core import (ConstantTripleMapper, GraphTriple, JSONBasedValueConverter, SparkDataFrameTypes)
-from ketl.spark.utils import assertDataFrameEqualX
-from ketl.tabmap.core import (ColumnTripleMapper, ColumnValueMapper, SparkDataFrameMapper, TabFileMapper)
-
 import ketl.helpers as khelpers
 import ketl.tabmap.helpers as tbhelpers
+from ketl.core import (ConstantTripleMapper, GraphTriple,
+                       JSONBasedValueConverter, SparkDataFrameTypes)
+from ketl.spark.utils import assertDataFrameEqualX
+from ketl.tabmap.core import (ColumnTripleMapper, ColumnValueMapper,
+                              SparkDataFrameMapper, TabFileMapper)
 
 log = logging.getLogger ( __name__ )
 

@@ -5,7 +5,8 @@ Helpers used to build tabular source mappers and related entities.
 from collections.abc import Callable
 from typing import Any
 
-from ketl.core import ConstantTripleMapper, GraphTriple, ValueConverter, ValueMapper
+from ketl.core import (ConstantTripleMapper, GraphTriple, ValueConverter,
+                       ValueMapper)
 from ketl.tabmap.core import ColumnValueMapper, RowTripleMapper, RowValueMapper
 
 

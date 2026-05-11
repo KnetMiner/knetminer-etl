@@ -1,10 +1,11 @@
 import os
-from pathlib import Path
 import textwrap
+from pathlib import Path
 
 import pytest
-from ketl.config import load_config
 from assertpy import assert_that
+
+from ketl.config import load_config
 
 
 def test_config_load ( config ):
