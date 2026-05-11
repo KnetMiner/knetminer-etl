@@ -29,7 +29,7 @@ def get_spark_session ( app_name_postfix: str = "" ) -> SparkSession:
 
 def create_neo4j_driver () -> neo4j.AsyncDriver:
 	driver = neo4j.AsyncGraphDatabase.driver ( 
-		"bolt://localhost:" + os.getenv ( "NEO4J_PORT", "7687" ),
+		os.getenv ( "NEO4J_URL", "bolt://localhost" ),
 		auth = ( 
 			os.getenv ( "NEO4J_USER", "neo4j" ), 
 			os.getenv ( "NEO4J_PASSWORD", "" )

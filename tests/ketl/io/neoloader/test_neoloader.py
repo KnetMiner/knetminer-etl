@@ -15,6 +15,8 @@ from testcontainers.neo4j import Neo4jContainer
 from ketl.io.neoloader import (NeoLoaderConfig, NeoLoaderPropertyConfig,
                                pg_jsonl_neo_loader, pg_jsonl_neo_loader_cli)
 
+from conftest import create_async_neo_driver
+
 log = logging.getLogger ( __name__ )
 
 def create_multiple_multi_value_config() -> NeoLoaderConfig:
@@ -823,43 +825,3 @@ def pg_data ( request ) -> tuple[ list[ dict ], list[ dict ] ]:
 
 	return pg_nodes, pg_edges
 
-
-@pytest.fixture ( scope = "module" )
-def neo4j_container() -> Generator[ Neo4jContainer, None, None ]:
-	"""
-	The test container common to all driver fixtures and all the tests.
-	"""
-	with Neo4jContainer() as container:
-		yield container
-
-
-def create_async_neo_driver ( neo4j_container: Neo4jContainer ) -> neo4j.AsyncDriver:
-	"""
-	Returns a new async Neo4j driver connected to the test container.
-
-	**WARNING**: yes, there is a reason why this is an helper to be invoked in all the tests
-	needing it, **and not a fixture**: the async driver needs to be created inside the event loop of the test, 
-	and not in the fixture's setup. Otherwise, we get hard-to-fix conflicts between the event loop created
-	by the test fixture and the one that the test itself might create, directly or indirectly, via the code 
-	under test.
-	
-	For instance, this was happening with :func:`pg_jsonl_neo_loader()`, which does async I/O with the driver, 
-	and tests were failing with something like "got Future <Future pending> attached to a different loop".
-	"""
-	url = neo4j_container.get_connection_url()
-	driver = neo4j.AsyncGraphDatabase.driver ( 
-		url,
-		auth = ( neo4j_container.username, neo4j_container.password )
-	)
-	return driver
-
-
-@pytest.fixture ( scope = "module" )
-def neo_driver ( neo4j_container: Neo4jContainer ) -> Generator[ neo4j.Driver, None, None ]:
-	"""
-	Yields a driver connected to the test container.
-
-	Tests use this for verifying written data via synch queries.
-	This doesn't have async issues and hence we can manage it through a fixture.
-	"""
-	yield neo4j_container.get_driver ()
