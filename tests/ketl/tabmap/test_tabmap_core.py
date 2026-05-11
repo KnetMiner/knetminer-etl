@@ -1,25 +1,27 @@
+"""
+
+**WARNING**: Don't rename this test_core, pytest doesn't accept test files with the same name in multiple
+namespaces. It would require `__init__.py` for that, but this blocks the creation of subpackages.
+"""
 import logging
 import os
 
 import pytest
 from assertpy import assert_that
 from pyspark.sql import DataFrame
-from pyspark.sql.types import IntegerType, StringType
+from pyspark.sql.types import IntegerType
 
-from ketl.core import (ConstantTripleMapper, GraphTriple,
-                       IdentityValueConverter, SparkDataFrameTypes)
+from ketl.core import (ConstantTripleMapper, GraphTriple, JSONBasedValueConverter, SparkDataFrameTypes)
 from ketl.spark.utils import assertDataFrameEqualX
-from ketl.tabmap.core import (ColumnTripleMapper, ColumnValueMapper,
-                              RowTripleMapper, RowValueMapper,
-                              SparkDataFrameMapper, TabFileMapper)
+from ketl.tabmap.core import (ColumnTripleMapper, ColumnValueMapper, SparkDataFrameMapper, TabFileMapper)
 
 import ketl.helpers as khelpers
 import ketl.tabmap.helpers as tbhelpers
 
 log = logging.getLogger ( __name__ )
 
-class TestRowValueMapper:
-	def test_from_extractor ( self ):
+class TestRowValueMapper:		
+	def test_row_value_mapper ( self ):
 		extractor = lambda row: f"ENSEMBL:{row [ 'accession' ].upper ()} ({row ['name']})"
 
 		rvmap = tbhelpers.row_value_mapper ( fun = extractor )
@@ -74,6 +76,54 @@ class TestRowValueMapper:
 
 		assert_that ( mapped_value, "edge_auto_id_row_value_mapper() returns the expected edge ID" )\
 			.is_equal_to ( expected_value )
+		
+	@pytest.mark.parametrize (
+		argnames = "test_case",
+		argvalues = [ "basic", "chaining", "converter" ]
+	)
+	def test_with_value_wrapper ( self, test_case ):
+		mapper = tbhelpers.row_value_mapper ( lambda row: row [ "name" ] )\
+			.with_value_wrapper ( lambda v: v if v else "" )
+		test_value = "Alice"
+		assert_that (
+			mapper.value ( { "name": test_value } ),
+			"with_value_wrapper() returns the original value when not None"
+		).is_equal_to ( test_value )
+		assert_that ( mapper.value ( { "name": None } ), "with_value_wrapper() returns empty string for None" )\
+			.is_equal_to ( "" )
+		assert_that ( mapper.value ( { "name": "" } ), "with_value_wrapper() returns empty string for empty string" )\
+			.is_equal_to ( "" )
+		
+		if not test_case in [ "chaining", "converter" ]: return
+
+		# Test chaining
+		default_value = "[NA]"
+		mapper.with_value_wrapper ( lambda v: v if v else default_value )
+		mapper.with_value_wrapper ( lambda v: v.upper () )
+		assert_that ( mapper.value ( { "name": None } ), "Chained with_value_wrapper() returns default value for None" )\
+			.is_equal_to ( default_value )
+		assert_that ( mapper.value ( { "name": "" } ), "Chained with_value_wrapper() returns default value for empty string" )\
+			.is_equal_to ( default_value )
+		assert_that (
+			mapper.value ( { "name": test_value } ),
+			"Chained with_value_wrapper() returns the massaged original value for non-empty string"
+		).is_equal_to ( test_value.upper () )
+
+		if not test_case == "converter": return
+
+		# Test with serialisation
+		converter = JSONBasedValueConverter ()
+		
+		assert_that ( 
+			mapper.value ( { "name": test_value }, converter = converter ),
+			"with_value_wrapper() works correctly with a converter"
+		).is_equal_to ( converter.serialize ( mapper.value ( { "name": test_value } ) ) )
+		
+		assert_that ( 
+			mapper.value ( { "name": None }, converter = converter ),
+			"with_value_wrapper() works correctly with a converter (for None value)"
+		).is_equal_to ( converter.serialize ( mapper.value ( { "name": None } ) ) )
+
 # /TestRowValueMapper
 
 

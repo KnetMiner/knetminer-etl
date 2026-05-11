@@ -2,6 +2,7 @@
 Tabular/CSV mapping tools for KnetMiner ETLs
 """
 
+import inspect
 import logging
 from abc import abstractmethod
 from typing import Any, Callable, Dict
@@ -12,7 +13,7 @@ from pyspark.sql.types import (ArrayType, DataType, StringType, StructField,
                                StructType)
 
 from ketl.core import (ConstantTripleMapper, GraphTriple,
-                       IdentityValueConverter, SparkDataFrameTypes, ValueMapper, PreSerializers,
+                       SparkDataFrameTypes, ValueMapper,
                        PropertyMapperMixin, ValueConverter)
 from ketl.spark.utils import df_save
 
@@ -49,36 +50,45 @@ class RowValueMapper ( ValueMapper ):
 		Usually, an aggregating mapper will decide to serialise or not, based on whether it's dealing with a 
 		node/edge user property or a special key like type.
 
-		When serialisation is applied, an empty string might end up returning None. Note that, while this is
-		possible, it would be usually weird that a mapping configuration has a null or empty constant.
+		When serialisation is applied, an empty string might end up returning None.
 
 		TODO: test the serialisation.
 		"""
 
-	def with_value_wrapper ( self, value_wrapper: Callable[ [Any], Any ] ) -> "RowValueMapper":
+	def with_value_wrapper ( self, value_wrapper: Callable[ [dict[str, Any]], Any ] ) -> "RowValueMapper":
 		"""
 		Changes the mapper so that it applies the provided `value_wrapper` to 
 		the value returned by :meth:`value()`. 
 
-		This can be useful for applications like adding prefixes/postfixed, trimming strings or discarding
+		This can be useful for applications like adding prefixes/postfixes, trimming strings or discarding
 		invalid values (by returning None).
+
+		Note that the new `value()` method will work like this:
+		- the original value() is applied without passing it the converter (not even if it's provided)
+		- then your wrapper is applied to the originally returned value, and the converter isn't involved here either
+		  (your wrapper has the `row_dict` parameter only)
+		- The final value is then serialised if the converter is provided.
+		
+		This keeps the wrapper simple and useful in most cases. If you need to deal with the serialisation on
+		your own, don't use this method, rather override `value()` in an extension or use the
+		`row_value_mapper` helper.
+
+		If this method is called multiple times, then multiple wrappers are composed/chained (first-to-last).
+		This happens with the same approach as above, ie, first all the value functions are applied without
+		any serialisation, finally the converter is involved. This makes the chaining clear and simple.
 
 		See also helper wrappers in :mod:`ketl.helpers`.
 
 		This is a fluent style setter, it returns `self`.
 
-		TODO: test.
 		"""
-		if hasattr ( self, "_value_wrapper" ):
-			# If this mapper already has a value wrapper, we need to chain it with the new one, so that both are applied.
-			value_wrapper = lambda v: value_wrapper ( self._value_wrapper ( v ) )
-		else:
-			# Redefine value() to apply self._value_wrapper
-			original_value_fun = self.value
-			def value_with_wrapper ( row_dict: dict [ str, Any ], converter: ValueConverter = None ) -> Any | None:
-				return value_wrapper ( original_value_fun ( row_dict ) )
-			self.value = value_with_wrapper
-		self._value_wrapper = value_wrapper
+		original_value_fun = self.value
+		def value_with_wrapper ( row_dict: dict [ str, Any ], converter: ValueConverter = None ) -> Any | None:
+			value = value_wrapper ( original_value_fun ( row_dict ) )
+			if converter: value = converter.serialize ( value )
+			return value
+		self.value = value_with_wrapper
+
 		return self
 
 	def with_column_ids ( self, column_ids: list [ str ] ) -> "RowValueMapper":

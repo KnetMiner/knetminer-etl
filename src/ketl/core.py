@@ -78,10 +78,10 @@ class PGElementType ( StrEnum ):
 	NODE = "node"
 	EDGE = "edge"
 
-
+# TODO: remove
+#
 PreSerializer = Callable[[Any], Any]
 """Type alias for a pre-serialiser function."""
-
 PreSerializers = list [ PreSerializer ] | PreSerializer
 """Type alias for a possibly-multiple serialisers."""
 
