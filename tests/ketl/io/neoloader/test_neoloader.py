@@ -5,17 +5,16 @@ import os
 import random
 from datetime import timedelta
 from pathlib import Path
-from typing import Any, Generator, Iterable
+from typing import Any, Iterable
 
 import neo4j
 import pytest
 from assertpy import assert_that
+from conftest import create_async_neo_driver
 from testcontainers.neo4j import Neo4jContainer
 
 from ketl.io.neoloader import (NeoLoaderConfig, NeoLoaderPropertyConfig,
                                pg_jsonl_neo_loader, pg_jsonl_neo_loader_cli)
-
-from conftest import create_async_neo_driver
 
 log = logging.getLogger ( __name__ )
 

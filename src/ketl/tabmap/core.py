@@ -4,7 +4,7 @@ Tabular/CSV mapping tools for KnetMiner ETLs
 
 import logging
 from abc import abstractmethod
-from typing import Any, Callable, Dict
+from typing import Any, Dict
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import explode, udf
@@ -47,7 +47,6 @@ class RowValueMapper ( ValueMapper ):
 
 		The method can be affected by :meth:`with_value_wrapper` (again, see `ValueMapper`).
 		"""
-		pass
 
 	def with_column_ids ( self, column_ids: list [ str ] ) -> "RowValueMapper":
 		"""

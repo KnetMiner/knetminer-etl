@@ -4,14 +4,11 @@ uses the most common features of the module.
 """
 
 import json
-import os
-import subprocess
 
 import pytest
 from assertpy import assert_that
-from deepdiff import DeepDiff
-
 from conftest import run_snakefile
+from deepdiff import DeepDiff
 
 KETL_DATA_DIR_PATH = "/tmp/ketl"
 

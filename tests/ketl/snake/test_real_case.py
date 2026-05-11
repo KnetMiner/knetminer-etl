@@ -2,15 +2,13 @@
 Tests and end-to-end Snake workflow, which includes various mappers and Neo loading.
 """
 import os
+
+import neo4j
 import pandas as pd
 import pytest
-import neo4j
-from testcontainers.neo4j import Neo4jContainer
-
 from assertpy import assert_that
-from ketl.io.neoloader import NeoLoaderConfig
-
 from conftest import run_snakefile
+from testcontainers.neo4j import Neo4jContainer
 
 KETL_DATA_DIR_PATH = "/tmp/ketl"
 
@@ -21,6 +19,9 @@ TEST_DIR = PRJ_DIR + "/tests"
 
 @pytest.mark.integration
 def test_neo_nodes ( neo_driver: neo4j.Driver, genes_csv: pd.DataFrame ) -> None:
+	"""
+	The input has genes, proteins, one accession per gene/protein is created
+	"""
 	n_expected_genes = genes_csv["ENSEMBL ID"].nunique ()
 	n_expected_proteins = genes_csv["UniProt ID"].nunique ()
 	n_expected_accessions = n_expected_genes + n_expected_proteins
@@ -41,6 +42,10 @@ def test_neo_nodes ( neo_driver: neo4j.Driver, genes_csv: pd.DataFrame ) -> None
 
 
 def test_neo_edges ( neo_driver: neo4j.Driver, genes_csv: pd.DataFrame ) -> None:
+	"""
+	One gene encodesProtein protein relationship is created per input row and
+	one gene|protein hasAccession accession per node
+	"""
 	# Equals the number of unique rows
 	n_expected_encodes = genes_csv[ [ "ENSEMBL ID", "UniProt ID" ] ].drop_duplicates ().shape [ 0 ]
 	n_expected_genes = genes_csv["ENSEMBL ID"].nunique ()

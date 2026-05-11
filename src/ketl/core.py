@@ -205,7 +205,6 @@ class ValueMapper ( ABC ):
 
 		See also :meth:`with_value_wrapper`, which replaces the initial `value()` with new transformations.
 		"""
-		pass
 
 	def with_value_wrapper ( self, value_wrapper: Callable[ [Any], Any ] ) -> "ValueMapper":
 		"""

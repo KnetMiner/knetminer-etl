@@ -7,7 +7,6 @@ import neo4j
 import pytest
 from brandizpyes.logging import logger_config
 from pyspark.sql import SparkSession
-
 from testcontainers.neo4j import Neo4jContainer
 
 """
