@@ -29,5 +29,6 @@
 
 # Grand Restructuring of 2026-05
 
-* [ ] See [#2](https://github.com/KnetMiner/knetminer-etl/issues/2).
+* [X] See [#2](https://github.com/KnetMiner/knetminer-etl/issues/2).
 * [ ] See other TODOs in the real test case
+	* [ ] Unit test for it
