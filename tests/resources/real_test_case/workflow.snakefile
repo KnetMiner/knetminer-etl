@@ -1,23 +1,22 @@
 # Requires tests/ in PYTHONPATH
-from resources.real_test_case.wf_mapping import (
-	E2U_ENSEMBL_GENE_MAPPER, E2U_ENSEMBL_GENE_ACCESSION_MAPPERS,
-	E2U_ENSEMBL_PROTEIN_MAPPER, E2U_UNIPROT_ACCESSION_MAPPERS,
-	E2U_GENE2PROTEIN_MAPPER, NEO_LOADER_CONFIG
-)
+import asyncio
 
 import resources.real_test_case.wf_config as wf_config
-
-from ketl.io.core import pg_df_2_pg_jsonl, triples_2_pg_df
-from ketl.spark.utils import df_check_path, df_path, create_spark_session_from_config, df_save
-from ketl.config import load_config
-from ketl.io.neoloader import create_neo_driver_from_config, pg_jsonl_neo_loader, async_pg_jsonl_neo_loader
-from ketl.core import PGElementType
-
-from pyspark.sql.functions import lit
-
-import asyncio
 from brandizpyes.logging import logger_config
+from pyspark.sql.functions import lit
+from resources.real_test_case.wf_mapping import (
+	E2U_ENSEMBL_GENE_ACCESSION_MAPPERS, E2U_ENSEMBL_GENE_MAPPER,
+	E2U_ENSEMBL_PROTEIN_MAPPER, E2U_GENE2PROTEIN_MAPPER,
+	E2U_UNIPROT_ACCESSION_MAPPERS, NEO_LOADER_CONFIG)
 
+from ketl.config import load_config
+from ketl.core import PGElementType
+from ketl.io.core import pg_df_2_pg_jsonl, triples_2_pg_df
+from ketl.io.neoloader import (async_pg_jsonl_neo_loader,
+                               create_neo_driver_from_config,
+                               pg_jsonl_neo_loader)
+from ketl.spark.utils import (create_spark_session_from_config, df_check_path,
+                              df_path, df_save)
 
 # TODO: ketl logging
 

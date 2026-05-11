@@ -2,18 +2,17 @@
 A SnakeMake workflow that tests tab mapping.
 """
 
-from ketl.tabmap.sample_config import ENCODING_MAPPER, PROTEINS_MAPPER
 from pyspark.sql import SparkSession
 from pyspark.sql.types import IntegerType
 
+import ketl.helpers as khelpers
+import ketl.tabmap.helpers as tbhelpers
 from ketl.core import ConstantTripleMapper, PGElementType, SparkDataFrameTypes
 from ketl.io.core import pg_df_2_pg_jsonl, triples_2_pg_df
 from ketl.spark.utils import df_check_path, df_path
-from ketl.tabmap.core import (ColumnValueMapper, ColumnTripleMapper, SparkDataFrameMapper,
-						 TabFileMapper)
-import ketl.helpers as khelpers
-import ketl.tabmap.helpers as tbhelpers
-
+from ketl.tabmap.core import (ColumnTripleMapper, ColumnValueMapper,
+                              SparkDataFrameMapper, TabFileMapper)
+from ketl.tabmap.sample_config import ENCODING_MAPPER, PROTEINS_MAPPER
 
 KETL_DATA = os.environ [ "KETL_DATA" ]
 KETL_IN = os.path.abspath ( workflow.basedir )
