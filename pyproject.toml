@@ -37,6 +37,8 @@ dev = [
     "isort (>=7.0.0,<8.0.0)",
     "snakemake (>=9.14.5,<10.0.0)",
     "testcontainers[neo4j] (>=4.14.1,<5.0.0)",
+    # Allows for: poetry run deptry . and check for unused deps or other dep issues.
+    "deptry (>=0.25.1,<0.26.0)",
 ]
 
 [tool.pytest.ini_options]
