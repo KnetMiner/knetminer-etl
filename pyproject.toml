@@ -57,7 +57,7 @@ filterwarnings = [
 ]
 
 
-# Not needed, we have out own logger setup in conftest.py
+# Not needed, we have our own logger setup in conftest.py
 # Use pytest --capture=no to see logs on the console and printed diagnostics
 # In particular, use it if the logging helper doesn't seem to work (might not find the config file)
 # log_cli = true
