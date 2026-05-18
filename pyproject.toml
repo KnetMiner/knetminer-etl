@@ -24,6 +24,12 @@ build-backend = "poetry.core.masonry.api"
 packages = [
   {include = "ketl", from = "src"}
 ]
+include = [
+  { path = "dist-resources/**", format = ["sdist", "wheel"] }
+]
+
+[tool.poetry.scripts]
+"ketl-deploy.sh" = { reference = "src/scripts/ketl-deploy.sh", type = "file" }
 
 [dependency-groups]
 dev = [
