@@ -10,7 +10,9 @@ __pycache__/
 .Python
 build/
 develop-eggs/
-dist/
+# TODO: to be decided if this should go to pypi.org, for the moment, we push it on github, ignore it again
+# if needed. TODO: Add 'poetry build' to the CI.
+# dist/
 downloads/
 eggs/
 .eggs/
