@@ -22,7 +22,8 @@ Options:
   --cores <num>           Cores per node (default: $SPARK_CORES)
   --ram <num>             RAM per node in GB (default: $SPARK_RAM)
                           (the Spark process is given 1 GB less)
-  --time <duration>       SLURM time limit, e.g. 02:00:00 (default: $SPARK_TIME)
+  --time <duration>       SLURM time limit (passed to sbatch --time), e.g. 02:00:00 
+                          (default: $SPARK_TIME)
   --track <path>          Base path for tracking the cluster nodes/jobs:
                             <path>.master  — Spark master hostname
                             <path>.port    — Spark master port
@@ -49,7 +50,7 @@ done
 
 sbatch_path="$script_dir/spark-start.sbatch"
 
-printf "|==== Starting the Spark cluster\n\n"
+printf "\n\n|==== Starting the Spark cluster\n\n"
 
 exec 3>&1
 submit_out=$(sbatch \

@@ -5,6 +5,8 @@ SPARK_TRACK_PATH=""
 
 usage() {
   cat <<EOF
+
+
 Usage: $(basename "$0") --track <path>
 
 Stop a running Spark SLURM job by cancelling it via the stored job ID.
