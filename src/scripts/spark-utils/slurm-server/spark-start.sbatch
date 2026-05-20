@@ -29,9 +29,9 @@ MASTER_PID=$!
 sleep 5
 
 # Write track files once the master is live
-if [[ -n "$TRACK_PATH" ]]; then
-  echo "$master_host"          > "${TRACK_PATH}.master"
-  echo "$SPARK_PORT"           > "${TRACK_PATH}.port"
+if [[ -n "$SPARK_TRACK_PATH" ]]; then
+  echo "$master_host"          > "${SPARK_TRACK_PATH}.master"
+  echo "$SPARK_PORT"           > "${SPARK_TRACK_PATH}.port"
 fi
 
 # Start one worker per allocated worker node
@@ -41,7 +41,7 @@ for node in $worker_nodes; do
   srun --nodes=1 --ntasks=1 -w "$node" \
     "$spark_class_cmd" org.apache.spark.deploy.worker.Worker \
       "spark://${master_host}:${SPARK_PORT}" \
-      --cores "$CORES" \
+      --cores "$SPARK_CORES" \
       --memory "${spark_process_ram}G" &
 done
 
@@ -49,6 +49,6 @@ done
 wait $MASTER_PID
 
 # Clean up track files on normal exit
-if [[ -n "$TRACK_PATH" ]]; then
-  rm -f "${TRACK_PATH}.master" "${TRACK_PATH}.port" "${TRACK_PATH}.jobid"
+if [[ -n "$SPARK_TRACK_PATH" ]]; then
+  rm -f "${SPARK_TRACK_PATH}.master" "${SPARK_TRACK_PATH}.port" "${SPARK_TRACK_PATH}.jobid"
 fi

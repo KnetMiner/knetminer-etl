@@ -13,11 +13,14 @@ export SPARK_WEB_PORT=8080
 
 usage() {
   cat <<EOF
+
+
 Usage: $(basename "$0") [OPTIONS]
 
 Start a Spark standalone cluster as a SLURM job.
 
 Options:
+
   --nodes <num>           Number of Spark nodes (default: $SPARK_NODES)
   --cores <num>           Cores per node (default: $SPARK_CORES)
   --ram <num>             RAM per node in GB (default: $SPARK_RAM)
@@ -30,7 +33,19 @@ Options:
                             <path>.jobid   — SLURM job ID that started the cluster (through this script)
   --port <num>            Spark master port (default: $SPARK_PORT)
   --web-port <num>        Spark master web UI port (default: $SPARK_WEB_PORT)
+  --sbatch <option>       <option> is passed to the 'sbatch' command (can override #SBATCH)
   --help                  Show this help
+
+
+WARNING: probably you need setup as follow before this script: 
+
+export JAVA_HOME=...
+module load Python/3.12.3-GCCcore-13.3.0
+<your-virtual-environment>/bin/activate # Do this BEFORE module load
+
+With this setup, usually you don't need SPARK_PATH, since it automatically picks the Spark locations
+from the venv.
+
 EOF
 }
 
@@ -58,16 +73,16 @@ submit_out=$(sbatch \
   --cpus-per-task="$SPARK_CORES" \
   --mem="${SPARK_RAM}G" \
   --time="$SPARK_TIME" \
-  "$sbatch_path"
-  | tee >(cat >&3)
+  "$sbatch_path" \
+  | tee >(cat >&3) \
 )
 
-job_id=$(echo "$submit_out" | grep -oP '(?<=Submitted batch job )\d+')
+job_id="$(echo "$submit_out" | grep -oP '(?<=Submitted batch job )\d+')"
 
 if [[ -n "$SPARK_TRACK_PATH" && -n "$job_id" ]]; then
   echo "$job_id" > "${SPARK_TRACK_PATH}.jobid"
   echo "|== Job ID $job_id written to ${SPARK_TRACK_PATH}.jobid"
-  echo "|== Master host/port will be written to ${SPARK_TRACK_PATH}.master / ${SPARK_TRACK_PATH}.port once the job starts."
+  echo "|== Master host/port will be written to ${SPARK_TRACK_PATH}.{master|port} once the job starts."
 fi
 
 printf "\n|==== Spark cluster started\n\n"

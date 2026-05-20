@@ -223,3 +223,6 @@ logs/
 
 .snakemake
 /.project
+
+# Test env created with the distro files 
+/spark-test-env/
