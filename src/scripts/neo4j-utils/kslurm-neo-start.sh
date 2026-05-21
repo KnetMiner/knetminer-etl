@@ -1,6 +1,3 @@
-# Starts a Neo4j server on a SLURM cluster, Using sbatch.
-#
-
 #!/usr/bin/env bash
 set -euo pipefail
 
