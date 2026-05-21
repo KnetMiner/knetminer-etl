@@ -1,7 +1,8 @@
-# A simple Spark app, which can be used to test if a Spark cluster is working, via:
+# A simple Spark app, which can be used to test if a Spark cluster is working.
+# In a knetminer-etl installation, you can run this via:
 #
 # <Create and activate a virtualenv with this project installed>
-# $ spark-submit --master spark://<master_host>:7077 -m ketl.spark.helloapp
+# $ spark-submit --master spark://<master_host>:7077 $(which kslurm-hello.py)
 # 
 from pyspark.sql import SparkSession
 import pyspark.sql.functions as F

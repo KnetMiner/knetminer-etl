@@ -73,6 +73,7 @@ filterwarnings = [
 "kslurm-spark-start.sh" = { reference = "src/scripts/spark-utils/slurm-server/kslurm-spark-start.sh", type = "file"}
 "kslurm-spark-stop.sh" = { reference = "src/scripts/spark-utils/slurm-server/kslurm-spark-stop.sh", type = "file"}
 "kslurm-spark-start.sbatch" = { reference = "src/scripts/spark-utils/slurm-server/kslurm-spark-start.sbatch", type = "file"}
+"kslurm-hello-spark.py" = { reference = "src/scripts/spark-utils/slurm-server/kslurm-hello-spark.py", type = "file"}
 
 
 # Not needed, we have our own logger setup in conftest.py
