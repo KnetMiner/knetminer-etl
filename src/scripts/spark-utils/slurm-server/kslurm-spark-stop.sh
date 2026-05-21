@@ -3,8 +3,8 @@ set -euo pipefail
 
 SPARK_TRACK_PATH=""
 
-usage() {
-  cat <<EOF
+function usage() {
+  cat <<EOT
 
 
 Usage: $(basename "$0") --track <path>
@@ -15,7 +15,7 @@ Options:
   --track <path>          Base path used when starting the cluster.
                           Reads <path>.jobid to find the SLURM job to cancel.
   --help                  Show this help
-EOF
+EOT
 }
 
 while [[ $# -gt 0 ]]; do

@@ -74,6 +74,9 @@ filterwarnings = [
 "kslurm-spark-stop.sh" = { reference = "src/scripts/spark-utils/slurm-server/kslurm-spark-stop.sh", type = "file"}
 "kslurm-spark-start.sbatch" = { reference = "src/scripts/spark-utils/slurm-server/kslurm-spark-start.sbatch", type = "file"}
 "kslurm-hello-spark.py" = { reference = "src/scripts/spark-utils/slurm-server/kslurm-hello-spark.py", type = "file"}
+"kslurm-neo-start.sh" = { reference = "src/scripts/neo4j-utils/kslurm-neo-start.sh", type = "file"}
+"kslurm-neo-stop.sh" = { reference = "src/scripts/neo4j-utils/kslurm-neo-stop.sh", type = "file"}
+"kslurm-neo-start.sbatch" = { reference = "src/scripts/neo4j-utils/kslurm-neo-start.sbatch", type = "file"}
 
 
 # Not needed, we have our own logger setup in conftest.py

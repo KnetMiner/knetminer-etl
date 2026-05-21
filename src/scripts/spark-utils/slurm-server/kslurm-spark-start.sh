@@ -13,8 +13,8 @@ export SPARK_PORT=7077
 export SPARK_WEB_PORT=8080
 sbatch_opts=""
 
-usage() {
-  cat <<EOF
+function usage() {
+  cat <<EOT
 
 
 Usage: ${my_base_name}.sh [OPTIONS]
@@ -49,7 +49,7 @@ module load Python/3.12.3-GCCcore-13.3.0
 With this setup, usually you don't need SPARK_PATH, since it automatically picks the Spark locations
 from the venv.
 
-EOF
+EOT
 }
 
 while [[ $# -gt 0 ]]; do
@@ -71,6 +71,7 @@ sbatch_path="$script_dir/${my_base_name}.sbatch"
 
 printf "\n\n|==== Starting the Spark cluster\n\n"
 
+# Show and capture the output
 exec 3>&1
 submit_out=$(sbatch \
   --nodes="$SPARK_NODES" \
@@ -87,7 +88,7 @@ job_id="$(echo "$submit_out" | grep -oP '(?<=Submitted batch job )\d+')"
 if [[ -n "$SPARK_TRACK_PATH" && -n "$job_id" ]]; then
   echo "$job_id" > "${SPARK_TRACK_PATH}.jobid"
   echo "|== Job ID $job_id written to ${SPARK_TRACK_PATH}.jobid"
-  echo "|== Master host/port will be written to ${SPARK_TRACK_PATH}.{master|port} once the job starts."
+  echo "|== Master host/port being written to ${SPARK_TRACK_PATH}.{master|port}"
 fi
 
 printf "\n|==== Spark cluster started\n\n"
