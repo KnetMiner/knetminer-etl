@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=spark-server
-#SBATCH --output=spark-server-%j.log
-#SBATCH --error=spark-server-%j.log
+#SBATCH --output=spark-server.log
+#SBATCH --error=spark-server.log
 
 set -euo pipefail
 
