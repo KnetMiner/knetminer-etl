@@ -6,6 +6,8 @@ authors = [
     {name = "Marco Brandizi",email = "marco.brandizi@gmail.com"}
 ]
 readme = "README.md"
+# Brandizi: I mostly develop with 3.14, but we need compatibility with other contexts, eg, 
+# RRes SLURM.
 requires-python = "^3.12"
 
 dependencies = [
@@ -55,6 +57,22 @@ filterwarnings = [
   "default::Warning:ketl\\..*",
   "default::Warning:test_\\..*"
 ]
+
+# Additional (non src/) files to be included in the distro archives.
+#include = [
+#  { path = "dist-resources/**", format = ["sdist", "wheel"] }
+#]
+
+[tool.poetry.scripts]
+# Utilities to start/stop a Spark cluster on SLURM.
+# Unfortunately, wildcards aren't supported, you can build this list with:
+#
+# l=$(find src/scripts -type f)
+# for p in $l; do n=$(basename $p); echo "\"$n\" = { reference = \"$p\", type = \"file\"}"; done
+#
+"kslurm-spark-start.sh" = { reference = "src/scripts/spark-utils/slurm-server/kslurm-spark-start.sh", type = "file"}
+"kslurm-spark-stop.sh" = { reference = "src/scripts/spark-utils/slurm-server/kslurm-spark-stop.sh", type = "file"}
+"kslurm-spark-start.sbatch" = { reference = "src/scripts/spark-utils/slurm-server/kslurm-spark-start.sbatch", type = "file"}
 
 
 # Not needed, we have our own logger setup in conftest.py
