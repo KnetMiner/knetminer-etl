@@ -2,7 +2,7 @@
 # In a knetminer-etl installation, you can run this via:
 #
 # <Create and activate a virtualenv with this project installed>
-# $ spark-submit --master spark://<master_host>:7077 $(which kslurm-hello.py)
+# $ spark-submit --master spark://<master_host>:7077 $(which kslurm-hello-spark.py)
 # 
 from pyspark.sql import SparkSession
 import pyspark.sql.functions as F
