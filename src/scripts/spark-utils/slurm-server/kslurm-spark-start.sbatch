@@ -54,6 +54,11 @@ function cleanup()
 {
   echo "|== Shutting down the Spark cluster"
 
+  # TODO: it doesn't work entirely well, since 'kill' to jobs cause triggers the SLURM default
+  # timeout, which is too short. Wait for upgrades that support srun --parsable, and then 
+  # use the child job ID and scancel.
+  #
+
   kill -TERM $all_pids
   # Try to wait for their exit
   timeout "$SPARK_STOP_TIMEOUT" bash -c \

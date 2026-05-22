@@ -11,6 +11,7 @@ export SPARK_TIME="02:00:00"
 export SPARK_TRACK_PATH="spark-server"
 export SPARK_PORT=7077
 export SPARK_WEB_PORT=8080
+export SPARK_STOP_TIMEOUT=120
 sbatch_opts=""
 
 function usage() {
@@ -36,6 +37,8 @@ Options:
                           Default: $SPARK_TRACK_PATH
   --port <num>            Spark master port (default: $SPARK_PORT)
   --web-port <num>        Spark master web UI port (default: $SPARK_WEB_PORT)
+  --stop-timeout <num>    Timeout in seconds to wait for Spark cluster to stop (default: $SPARK_STOP_TIMEOUT)
+                          The cluster is killed if it doesn't stop within this time.
   --sbatch <option>       <option> is passed to the 'sbatch' command (can override #SBATCH)
   --help                  Show this help
 
@@ -61,6 +64,7 @@ while [[ $# -gt 0 ]]; do
     --track)        SPARK_TRACK_PATH="$2";   shift 2 ;;
     --port)         SPARK_PORT="$2";         shift 2 ;;
     --web-port)     SPARK_WEB_PORT="$2";     shift 2 ;;
+    --stop-timeout) SPARK_STOP_TIMEOUT="$2"; shift 2 ;;
     --sbatch)       sbatch_opts+=" $2";     shift 2 ;;
     --help)         usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage >&2; exit 1 ;;
