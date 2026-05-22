@@ -58,14 +58,16 @@ jobs:
     - name: Set up JDK
       uses: actions/setup-java@v4
       with:
+        # **WARNING** Spark isn't compatible with 25 yet
         java-version: '21'
         distribution: temurin
 
-    - name: Set up Spark
-      uses: vemonet/setup-spark@v1
-      with:
-        spark-version: '4.1.1'
-        # hadoop-version: '3'
+    # TODO: probably not needed, pulled in by the pyspark dependency.
+    #- name: Set up Spark
+    #  uses: vemonet/setup-spark@v1
+    #  with:
+    #    spark-version: '4.1.1'
+    #    # hadoop-version: '3'
       
     - name: Cache for Poetry Virtualenvs
       uses: actions/cache@v4
