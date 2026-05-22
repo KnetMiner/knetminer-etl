@@ -50,12 +50,13 @@ if [[ -z "$job_id" ]]; then
 fi
 
 echo "|== Cancelling SLURM job $job_id..."
-scancel "$job_id"
+# the sbatch has a INT trap, which manages the Neo shutdown. --signal tells SLURM to 
+# send it to the job's process.
+scancel --batch --signal SIGINT "$job_id"
 echo "|== Done."
 
-# Track files are normally removed by spark-start.sbatch on exit,
-# but clean up here too in case the job was already dead.
-echo "|== Removing Spark track files..."
-rm -f "${SPARK_TRACK_PATH}".{master,port,jobid}
+# The others are removed by the sbatch cleanup handler
+echo "|== Removing Spark jobid tracking file"
+rm -f "${SPARK_TRACK_PATH}".jobid
 
 printf "\n|==== Spark cluster stopped\n\n"

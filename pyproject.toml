@@ -8,7 +8,7 @@ authors = [
 readme = "README.md"
 # Brandizi: I mostly develop with 3.14, but we need compatibility with other contexts, eg, 
 # RRes SLURM.
-requires-python = "^3.12"
+requires-python = ">=3.12"
 
 dependencies = [
     "pyspark (>=4.0.1,<5.0.0)",
@@ -60,7 +60,7 @@ filterwarnings = [
 
 # Additional (non src/) files to be included in the distro archives.
 #include = [
-#  { path = "dist-resources/**", format = ["sdist", "wheel"] }
+#  { path = "src/examples/**", format = ["sdist", "wheel"] }
 #]
 
 [tool.poetry.scripts]

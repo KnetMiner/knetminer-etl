@@ -15,6 +15,8 @@ fi
 master_host=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 1)
 worker_nodes=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | tail -n +2)
 
+all_pids=""
+
 echo "|== Starting Spark master on $master_host (job $SLURM_JOB_ID)"
 
 # Start master on this node (the job's first node)
@@ -23,7 +25,7 @@ echo "|== Starting Spark master on $master_host (job $SLURM_JOB_ID)"
   --port "$SPARK_PORT" \
   --webui-port "$SPARK_WEB_PORT" &
 
-master_pid=$!
+all_pids=$!
 
 # Give the master a moment to bind its port before workers connect
 sleep 5
@@ -43,24 +45,35 @@ for node in $worker_nodes; do
       "spark://${master_host}:${SPARK_PORT}" \
       --cores "$SPARK_CORES" \
       --memory "${spark_process_ram}G" &
+  all_pids="$all_pids $!"
 done
 
 
-# Catch this when scancel
+# Catch this when scancel, so that we can finalise it
 function cleanup()
 {
   echo "|== Shutting down the Spark cluster"
 
-  # Clean up track files on normal exit
+  kill -TERM $all_pids
+  # Try to wait for their exit
+  timeout "$SPARK_STOP_TIMEOUT" bash -c \
+    "while kill -0 $all_pids 2>/dev/null; do sleep 5; done"
+  
+  # If you're still around, you must die!
+  if kill -0 $all_pids 2>/dev/null; then
+    echo "|== Spark cluster didn't stop normally within ${SPARK_STOP_TIMEOUT}s, killing it"
+    kill -KILL $all_pids
+  fi
+
+  # Clean up track files
   if [[ -n "$SPARK_TRACK_PATH" ]]; then
-    echo "|== Removing Spark cluster tracking files..."
+    echo "|== Removing Spark cluster tracking files"
     rm -f "${SPARK_TRACK_PATH}.master" "${SPARK_TRACK_PATH}.port" "${SPARK_TRACK_PATH}.jobid"
   fi
 
   echo "|== Spark cluster stopped"
 }
-trap cleanup EXIT
+trap cleanup INT
 
 # Keep the job alive until SLURM time limit or scancel
-wait $master_pid
-
+wait 
