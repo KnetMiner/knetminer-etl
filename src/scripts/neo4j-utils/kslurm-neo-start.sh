@@ -8,6 +8,7 @@ export NEO_RAM=4
 export NEO_CORES=4
 export NEO_TIME="02:00:00"
 export NEO_TRACK_PATH="neo-server"
+export NEO_STOP_TIMEOUT=120
 sbatch_opts=""
 
 
@@ -28,6 +29,9 @@ Options:
 	--cores <num>           Number of CPU cores requested for the running node (default: $NEO_CORES)
 	--time <duration>       SLURM time limit (passed to sbatch --time), e.g. 02:00:00 
 													(default: $NEO_TIME)
+	--stop-timeout <secs>   Shutdown timeout in seconds (default: $NEO_STOP_TIMEOUT). When stopping
+	                        Neo, it is killed with SIGKILL if it doesn't stop within this time 
+													more gently.
 	--track <path>          Base path for tracking the cluster nodes/jobs:
 														<path>.host  	— Neo4j running node
 														<path>.jobid  — SLURM job ID 
@@ -45,6 +49,7 @@ while [[ $# -gt 0 ]]; do
 		--cores)        NEO_CORES="$2";        shift 2 ;;
 		--time)         NEO_TIME="$2";         shift 2 ;;
 		--track)        NEO_TRACK_PATH="$2";   shift 2 ;;
+		--stop-timeout)  NEO_STOP_TIMEOUT="$2"; shift 2 ;;
 		--sbatch)       sbatch_opts+=" $2";     shift 2 ;;
 		--help)         usage; exit 0 ;;
 		*) echo "Unknown option: $1" >&2; usage >&2; exit 1 ;;
@@ -59,7 +64,6 @@ printf "\n\n|==== Starting Neo4j\n\n"
 # Show and capture the output
 exec 3>&1
 submit_out=$(sbatch \
-  --nodes="$NEO_NODES" \
   --cpus-per-task="$NEO_CORES" \
   --mem="${NEO_RAM}G" \
   --time="$NEO_TIME" \

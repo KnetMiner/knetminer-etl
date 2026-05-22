@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SPARK_TRACK_PATH=""
+export SPARK_TRACK_PATH="spark-server"
 
 function usage() {
   cat <<EOT
@@ -14,6 +14,7 @@ Stop a running Spark SLURM job by cancelling it via the stored job ID.
 Options:
   --track <path>          Base path used when starting the cluster.
                           Reads <path>.jobid to find the SLURM job to cancel.
+                          Default: $SPARK_TRACK_PATH
   --help                  Show this help
 EOT
 }
@@ -34,27 +35,27 @@ fi
 
 printf "\n\n|==== Stopping the Spark cluster\n\n"
 
-JOBID_FILE="${SPARK_TRACK_PATH}.jobid"
+jobid_path="${SPARK_TRACK_PATH}.jobid"
 
-if [[ ! -f "$JOBID_FILE" ]]; then
-  echo "Error: job ID file not found: $JOBID_FILE" >&2
+if [[ ! -f "$jobid_path" ]]; then
+  echo "Error: job ID file not found: $jobid_path" >&2
   exit 1
 fi
 
-JOB_ID=$(cat "$JOBID_FILE")
+job_id=$(cat "$jobid_path")
 
-if [[ -z "$JOB_ID" ]]; then
-  echo "Error: $JOBID_FILE is empty." >&2
+if [[ -z "$job_id" ]]; then
+  echo "Error: $jobid_path is empty." >&2
   exit 1
 fi
 
-echo "|== Cancelling SLURM job $JOB_ID..."
-scancel "$JOB_ID"
+echo "|== Cancelling SLURM job $job_id..."
+scancel "$job_id"
 echo "|== Done."
 
 # Track files are normally removed by spark-start.sbatch on exit,
 # but clean up here too in case the job was already dead.
 echo "|== Removing Spark track files..."
-rm -f "${SPARK_TRACK_PATH}.master" "${SPARK_TRACK_PATH}.port" "${SPARK_TRACK_PATH}.jobid"
+rm -f "${SPARK_TRACK_PATH}".{master,port,jobid}
 
 printf "\n|==== Spark cluster stopped\n\n"

@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-NEO_TRACK_PATH=""
+NEO_TRACK_PATH="neo-server"
+NEO_STOP_TIMEOUT=120
+
 
 function usage() {
 	cat <<EOT
@@ -11,6 +13,10 @@ Usage: $(basename "$0") --track <path>
 Options:
   --track <path>          Base path used when starting the Neo4j server.
                           Reads <path>.jobid to find the SLURM job to cancel.
+                          Default: $NEO_TRACK_PATH
+	--stop-timeout <secs>   Shutdown timeout in seconds (default: $NEO_STOP_TIMEOUT). 
+													Similar to the same option in the start script, it waits up to this
+													time for the complete shutdown and cleaning of the server tracking files.
   --help                  Show this help
 EOT
 }
@@ -30,17 +36,23 @@ if [[ -z "$NEO_TRACK_PATH" ]]; then
 	exit 1
 fi
 
-JOBID_FILE="${NEO_TRACK_PATH}.jobid"
-if [[ ! -f "$JOBID_FILE" ]]; then
-	echo "Error: job ID file not found: $JOBID_FILE" >&2
+jobid_path="${NEO_TRACK_PATH}.jobid"
+if [[ ! -f "$jobid_path" ]]; then
+	echo "Error: job ID file not found: $jobid_path" >&2
 	exit 1
 fi
-JOB_ID=$(cat "$JOBID_FILE")
-if [[ -z "$JOB_ID" ]]; then
-	echo "Error: $JOBID_FILE is empty." >&2
+job_id=$(cat "$jobid_path")
+if [[ -z "$job_id" ]]; then
+	echo "Error: $jobid_path is empty." >&2
 	exit 1
 fi
-echo "|== Cancelling SLURM job $JOB_ID..."
-scancel "$JOB_ID"
 
-printf "\n|==== Neo4j server stopped.\n\n"
+echo "|== Cancelling SLURM job $job_id..."
+# the sbatch has a INT trap, which manages the Neo shutdown. --signal tells SLURM to 
+# send it to the job's process.
+scancel --batch --signal SIGINT "$job_id"
+
+# Wait until the jobid file is removed by the sbatch, which means all is over.
+echo "|== Waiting for the Neo4j server to stop..."
+timeout "$NEO_STOP_TIMEOUT" bash -c "while [[ -f \"$jobid_path\" ]]; do sleep 5; done"
+printf "\n|==== Neo4j job stopped.\n\n"

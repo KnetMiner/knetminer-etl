@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=spark-server
-#SBATCH --output=spark-server.log
-#SBATCH --error=spark-server.log
+#SBATCH --output=spark-server.out
+#SBATCH --error=spark-server.out
 
 set -euo pipefail
 
@@ -45,16 +45,22 @@ for node in $worker_nodes; do
       --memory "${spark_process_ram}G" &
 done
 
+
+# Catch this when scancel
+function cleanup()
+{
+  echo "|== Shutting down the Spark cluster"
+
+  # Clean up track files on normal exit
+  if [[ -n "$SPARK_TRACK_PATH" ]]; then
+    echo "|== Removing Spark cluster tracking files..."
+    rm -f "${SPARK_TRACK_PATH}.master" "${SPARK_TRACK_PATH}.port" "${SPARK_TRACK_PATH}.jobid"
+  fi
+
+  echo "|== Spark cluster stopped"
+}
+trap cleanup EXIT
+
 # Keep the job alive until SLURM time limit or scancel
 wait $master_pid
-
-echo "|== Shutting down the Spark cluster"
-
-# Clean up track files on normal exit
-if [[ -n "$SPARK_TRACK_PATH" ]]; then
-  echo "|== Removing Spark cluster tracking files..."
-  rm -f "${SPARK_TRACK_PATH}.master" "${SPARK_TRACK_PATH}.port" "${SPARK_TRACK_PATH}.jobid"
-fi
-
-echo "|== Spark cluster stopped"
 
