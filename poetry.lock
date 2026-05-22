@@ -2048,5 +2048,5 @@ pyyaml = ">=6.0,<7.0"
 
 [metadata]
 lock-version = "2.1"
-python-versions = "^3.12"
-content-hash = "31077c34d8fbd1974d9efb99f34b3c7db6837faa3a7ffff4423629639ad62042"
+python-versions = ">=3.12,<4.0"
+content-hash = "05668fd971257c68d6f24e4a5fdbb9fa8a39769168f47edc6e21acffefa7786a"
