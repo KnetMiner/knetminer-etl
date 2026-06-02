@@ -15,8 +15,6 @@ fi
 master_host=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 1)
 worker_nodes=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | tail -n +2)
 
-all_pids=""
-
 echo "|== Starting Spark master on $master_host (job $SLURM_JOB_ID)"
 
 # Start master on this node (the job's first node)
@@ -25,7 +23,7 @@ echo "|== Starting Spark master on $master_host (job $SLURM_JOB_ID)"
   --port "$SPARK_PORT" \
   --webui-port "$SPARK_WEB_PORT" &
 
-all_pids=$!
+master_pid=$!
 
 # Give the master a moment to bind its port before workers connect
 sleep 5
@@ -36,16 +34,45 @@ if [[ -n "$SPARK_TRACK_PATH" ]]; then
   echo "$SPARK_PORT"           > "${SPARK_TRACK_PATH}.port"
 fi
 
+function track_step_id ()
+{
+  # Tracks the job ID of a step, after having waited for its start.
+  # Used below.
+
+  # TODO: introduce srun --parsable when available
+
+  step_name="$1"
+  while true; do
+    step_id=$(
+      squeue -h -s -j "$SLURM_JOB_ID" -o "%i %j" \
+        | awk -v n="$step_name" '$2 == n {print $1; exit}'
+    )
+
+    [[ -n "$step_id" ]] && break
+    sleep 0.5s
+  done
+  echo "$step_id"
+}
+
 # Start one worker per allocated worker node
+#
+worker_job_ids=""
 spark_process_ram=$((SPARK_RAM - 1)) # Leave 1 GB for overhead
 for node in $worker_nodes; do
   echo "|== Starting Spark worker on $node"
-  srun --nodes=1 --ntasks=1 -w "$node" \
+  step_name="spark_worker_${node}_$$"
+  srun --nodes=1 --ntasks=1 -w "$node" --job-name="$step_name" \
     "$spark_class_cmd" org.apache.spark.deploy.worker.Worker \
       "spark://${master_host}:${SPARK_PORT}" \
       --cores "$SPARK_CORES" \
       --memory "${spark_process_ram}G" &
-  all_pids="$all_pids $!"
+done
+
+# Track their job IDS separately, so that the launches remain async
+for node in $worker_nodes; do
+  step_name="spark_worker_${node}_$$"
+  worker_job_id=$(track_step_id "$step_name")
+  worker_job_ids+=" $worker_job_id"
 done
 
 
@@ -54,20 +81,18 @@ function cleanup()
 {
   echo "|== Shutting down the Spark cluster"
 
-  # TODO: it doesn't work entirely well, since 'kill' to jobs cause triggers the SLURM default
-  # timeout, which is too short. Wait for upgrades that support srun --parsable, and then 
-  # use the child job ID and scancel.
-  #
+  if ! timeout "$SPARK_STOP_TIMEOUT" kill $master_pid; then
+    echo "|== Spark master didn't stop normally within ${SPARK_STOP_TIMEOUT}s, killing it"
+    kill -KILL $master_pid
+  fi; 
 
-  kill -TERM $all_pids
+  scancel --batch "$worker_job_ids"
+
   # Try to wait for their exit
-  timeout "$SPARK_STOP_TIMEOUT" bash -c \
-    "while kill -0 $all_pids 2>/dev/null; do sleep 5; done"
-  
-  # If you're still around, you must die!
-  if kill -0 $all_pids 2>/dev/null; then
-    echo "|== Spark cluster didn't stop normally within ${SPARK_STOP_TIMEOUT}s, killing it"
-    kill -KILL $all_pids
+
+  if ! timeout "$SPARK_STOP_TIMEOUT" scancel --batch "$worker_job_ids"; then
+    echo "|== Spark worker jobs didn't stop normally within ${SPARK_STOP_TIMEOUT}s, killing them"
+    scancel --batch --signal KILL "$worker_job_ids"
   fi
 
   # Clean up track files
