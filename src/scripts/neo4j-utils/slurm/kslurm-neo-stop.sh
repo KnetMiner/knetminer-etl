@@ -48,11 +48,12 @@ if [[ -z "$job_id" ]]; then
 fi
 
 echo "|== Cancelling SLURM job $job_id..."
+
 # the sbatch has a INT trap, which manages the Neo shutdown. --signal tells SLURM to 
 # send it to the job's process.
-scancel --batch --signal SIGINT "$job_id"
+if !timeout "$NEO_STOP_TIMEOUT" scancel --batch --signal SIGINT "$job_id"; then
+	echo "|== Neo4j server didn't stop normally within ${NEO_STOP_TIMEOUT}s, killing it"
+	scancel --batch --signal KILL "$job_id"
+fi
 
-# Wait until the jobid file is removed by the sbatch, which means all is over.
-echo "|== Waiting for the Neo4j server to stop..."
-timeout "$NEO_STOP_TIMEOUT" bash -c "while [[ -f \"$jobid_path\" ]]; do sleep 5; done"
 printf "\n|==== Neo4j job stopped.\n\n"
