@@ -12,6 +12,7 @@ function stage_build_local
   # Are there actual changes to commit?
 	[[ -z "$(git status --porcelain)" ]] && return 0
 	
+	git add dist
 	git commit -m "build: upgrade the distro files on github (from CI script)"
 	export CI_NEEDS_PUSH=true
 }

@@ -34,8 +34,8 @@ def create_spark_session_fixture ():
 
 	Note that we tried the scope "session", but Spark crashes miserably, maybe due
 	to some concurrency issue when running tests in parallel.
-
 	"""
+	
 	log = logging.getLogger ( __name__ )
 	log.info ( "Creating Spark session for tests" )
 
