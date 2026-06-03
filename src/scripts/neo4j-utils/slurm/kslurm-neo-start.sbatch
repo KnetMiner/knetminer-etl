@@ -24,7 +24,11 @@ function cleanup ()
 {
 	echo "|== Shutting down Neo4j server, process $neo_pid"
 
-	if ! timeout "$NEO_STOP_TIMEOUT" kill -TERM "$neo_pid"; then
+	kill -TERM "$neo_pid"
+	# Keep polling until the process is gone
+	timeout "$NEO_STOP_TIMEOUT" bash -c "while kill -0 $neo_pid &>/dev/null; do sleep 1; done"
+	# Still around?
+	if kill -0 "$neo_pid" &>/dev/null; then
 		echo "|== Neo4j server didn't stop normally within ${NEO_STOP_TIMEOUT}s, killing it"
 		kill -KILL "$neo_pid"
 	fi

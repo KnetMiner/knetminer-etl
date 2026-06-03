@@ -51,7 +51,11 @@ echo "|== Cancelling SLURM job $job_id..."
 
 # the sbatch has a INT trap, which manages the Neo shutdown. --signal tells SLURM to 
 # send it to the job's process.
-if !timeout "$NEO_STOP_TIMEOUT" scancel --batch --signal SIGINT "$job_id"; then
+scancel --batch --signal SIGINT "$job_id"
+# Keep polling squeue until done
+timeout "$NEO_STOP_TIMEOUT" bash -c "while squeue --job $job_id &>/dev/null; do sleep 1; done"
+# Still around?
+if squeue --job "$job_id" &>/dev/null; then
 	echo "|== Neo4j server didn't stop normally within ${NEO_STOP_TIMEOUT}s, killing it"
 	scancel --batch --signal KILL "$job_id"
 fi
