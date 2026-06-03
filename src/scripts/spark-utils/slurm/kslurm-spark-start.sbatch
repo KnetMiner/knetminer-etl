@@ -80,30 +80,44 @@ do
   worker_job_ids+=" $worker_job_id"
 done
 
+echo "|== Spark cluster started with master on $master_host and workers on: $worker_nodes"
+echo "|== Job ID for master: $SLURM_JOB_ID, worker job IDs:$worker_job_ids"
 
 # Catch this when scancel, so that we can finalise it
 function cleanup()
 {
   echo "|== Shutting down the Spark cluster"
 
-  kill $master_pid
-  scancel --batch "$worker_job_ids"
+  # 'scancel' has '|| true', since for some reason, they raise 'Invalid job ID' despite correctly
+  # cancelling the steps.
 
-  # Try to wait for the master exit
+  # Since we have seen workers complaining that they can't connect the master, we take down them
+  # first
+  #
+  echo "|== Terminating the workers"
+  scancel --batch --signal TERM $worker_job_ids || true
+
+  # Wait for them to stop
+  timeout "$SPARK_STOP_TIMEOUT" bash -c "while squeue --jobs $worker_job_ids &>/dev/null; do sleep 1; done"
+
+  # Still around?
+  if squeue --jobs $worker_job_ids &>/dev/null; then
+    echo "|== Spark worker jobs didn't stop normally within ${SPARK_STOP_TIMEOUT}s, killing them"
+    scancel --batch --signal KILL $worker_job_ids || true
+  fi
+
+  # And then the master
+  #
+  echo "|== Terminating the master"
+  kill $master_pid || true
+
   timeout "$SPARK_STOP_TIMEOUT" bash -c "while kill -0 $master_pid &>/dev/null; do sleep 1; done"
   # Still around?
   if kill -0 "$master_pid" &>/dev/null; then
     echo "|== Spark master didn't stop normally within ${SPARK_STOP_TIMEOUT}s, killing it"
-    kill -KILL "$master_pid"
+    kill -KILL "$master_pid" || true
   fi
 
-  # Now wait for the workers to stop too
-  timeout "$SPARK_STOP_TIMEOUT" bash -c "while squeue --jobs $worker_job_ids &>/dev/null; do sleep 1; done"
-  # Still around?
-  if squeue --jobs "$worker_job_ids" &>/dev/null; then
-    echo "|== Spark worker jobs didn't stop normally within ${SPARK_STOP_TIMEOUT}s, killing them"
-    scancel --batch --signal KILL "$worker_job_ids"
-  fi
 
   # Clean up track files
   if [[ -n "$SPARK_TRACK_PATH" ]]; then
