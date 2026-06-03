@@ -7,11 +7,14 @@ set -eE -o pipefail
 function stage_build_local
 {
 	stage_build
+
+	printf "== Building the distribution files\n"
 	poetry $CI_POETRY_DEFAULT_ARGS build
 
   # Are there actual changes to commit?
 	[[ -z "$(git status --porcelain)" ]] && return 0
 	
+  printf "== Committing the distribution files\n"
 	git add dist
 	git commit -m "build: upgrade the distro files on github (from CI script)"
 	export CI_NEEDS_PUSH=true
