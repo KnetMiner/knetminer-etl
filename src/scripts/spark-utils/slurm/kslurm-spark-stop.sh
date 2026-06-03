@@ -59,4 +59,4 @@ echo "|== Done."
 echo "|== Removing Spark jobid tracking file"
 rm -f "${SPARK_TRACK_PATH}".jobid
 
-printf "\n|==== Spark cluster stopped\n\n"
+printf "\n|==== Spark cluster stop initiated\n\n"

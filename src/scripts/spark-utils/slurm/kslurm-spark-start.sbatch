@@ -81,16 +81,21 @@ function cleanup()
 {
   echo "|== Shutting down the Spark cluster"
 
-  if ! timeout "$SPARK_STOP_TIMEOUT" kill $master_pid; then
-    echo "|== Spark master didn't stop normally within ${SPARK_STOP_TIMEOUT}s, killing it"
-    kill -KILL $master_pid
-  fi; 
-
+  kill $master_pid
   scancel --batch "$worker_job_ids"
 
-  # Try to wait for their exit
+  # Try to wait for the master exit
+  timeout "$SPARK_STOP_TIMEOUT" bash -c "while kill -0 $master_pid &>/dev/null; do sleep 1; done"
+  # Still around?
+  if kill -0 "$master_pid" &>/dev/null; then
+    echo "|== Spark master didn't stop normally within ${SPARK_STOP_TIMEOUT}s, killing it"
+    kill -KILL "$master_pid"
+  fi
 
-  if ! timeout "$SPARK_STOP_TIMEOUT" scancel --batch "$worker_job_ids"; then
+  # Now wait for the workers to stop too
+  timeout "$SPARK_STOP_TIMEOUT" bash -c "while squeue --jobs $worker_job_ids &>/dev/null; do sleep 1; done"
+  # Still around?
+  if squeue --jobs "$worker_job_ids" &>/dev/null; then
     echo "|== Spark worker jobs didn't stop normally within ${SPARK_STOP_TIMEOUT}s, killing them"
     scancel --batch --signal KILL "$worker_job_ids"
   fi
