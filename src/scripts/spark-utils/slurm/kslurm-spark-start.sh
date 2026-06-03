@@ -4,7 +4,7 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 my_base_name="$(basename "${BASH_SOURCE[0]}" '.sh')"
 
-export SPARK_NODES=2
+export SPARK_NODES=3
 export SPARK_CORES=4
 export SPARK_RAM=4
 export SPARK_TIME="02:00:00"
@@ -24,7 +24,7 @@ Start a Spark standalone cluster as a SLURM job.
 
 Options:
 
-  --nodes <num>           Number of Spark nodes (default: $SPARK_NODES)
+  --nodes <num>           Number of Spark nodes, including the master (default: $SPARK_NODES)
   --cores <num>           Cores per node (default: $SPARK_CORES)
   --ram <num>             RAM per node in GB (default: $SPARK_RAM)
                           (the Spark process is given 1 GB less)

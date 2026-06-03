@@ -58,7 +58,8 @@ function track_step_id ()
 #
 worker_job_ids=""
 spark_process_ram=$((SPARK_RAM - 1)) # Leave 1 GB for overhead
-for node in $worker_nodes; do
+for node in $worker_nodes
+do
   echo "|== Starting Spark worker on $node"
   step_name="spark_worker_${node}_$$"
   srun --nodes=1 --ntasks=1 -w "$node" --job-name="$step_name" \
@@ -66,12 +67,16 @@ for node in $worker_nodes; do
       "spark://${master_host}:${SPARK_PORT}" \
       --cores "$SPARK_CORES" \
       --memory "${spark_process_ram}G" &
+  # We have seen that you might need to give SLURM a break to manage parallel launches
+  # sleep 2
 done
 
 # Track their job IDS separately, so that the launches remain async
-for node in $worker_nodes; do
+for node in $worker_nodes
+do
   step_name="spark_worker_${node}_$$"
   worker_job_id=$(track_step_id "$step_name")
+  printf "|== Spark worker on $node started with job ID $worker_job_id\n"
   worker_job_ids+=" $worker_job_id"
 done
 
@@ -103,7 +108,7 @@ function cleanup()
   # Clean up track files
   if [[ -n "$SPARK_TRACK_PATH" ]]; then
     echo "|== Removing Spark cluster tracking files"
-    rm -f "${SPARK_TRACK_PATH}.master" "${SPARK_TRACK_PATH}.port" "${SPARK_TRACK_PATH}.jobid"
+    rm -f "${SPARK_TRACK_PATH}".{master,port,jobid}
   fi
 
   echo "|== Spark cluster stopped"
