@@ -30,7 +30,7 @@ import re
 import sys
 from collections.abc import KeysView
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import datetime, timedelta
 from enum import StrEnum
 from itertools import islice
 from pathlib import Path
@@ -320,7 +320,6 @@ async def async_pg_jsonl_neo_loader (
 		of loaded elements.
 		"""
 
-		# TODO: ProcessPoolExecutor, requires nested functions to be moved on top
 		n_loaded = 0
 
 		type_filter = "node" if is_nodes_mode else "edge"
@@ -452,7 +451,12 @@ async def async_pg_jsonl_neo_loader (
 		done_suffix = "nodes" if is_nodes_mode else "edges"
 		done_path = done_path.with_name ( done_path.name + "." + done_suffix )
 		try:
-			done_path.touch ( exist_ok = True )
+			# The content is irrelevant, yet, write something nice in it
+			with done_path.open ( "w" ) as f:
+				f.write ( 
+					"%s from \"%s\" loaded in Neo4j on %s" % \
+					( done_suffix, str(pg_jsonl_source), datetime.now ().isoformat () )
+				)
 		except IOError as ex:
 			raise IOError ( f"pg_jsonl_neo_loader(), failed to create the done file '{done_path}': {ex}", cause = ex )
 
