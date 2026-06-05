@@ -4,6 +4,9 @@
 # <Create and activate a virtualenv with this project installed>
 # $ spark-submit --master spark://<master_host>:7077 $(which hello-spark.py)
 # 
+# TODO: pyspark already has examples, in lib/python3.14/site-packages/pyspark/examples/
+# so, not sure we should keep this
+#
 from pyspark.sql import SparkSession
 import pyspark.sql.functions as F
 
