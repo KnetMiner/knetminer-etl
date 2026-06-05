@@ -4,7 +4,8 @@
 	"python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
 	"python.analysis.extraPaths": [
     "${workspaceFolder}/src",
-    "${workspaceFolder}/tests"
+    "${workspaceFolder}/tests",
+		"${workspaceFolder}/src/examples/ensembl"
 	],
 	"python.testing.pytestEnabled": true,
 	"python.testing.unittestEnabled": false

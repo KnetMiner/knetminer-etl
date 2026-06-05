@@ -115,14 +115,19 @@ def run_snakefile (
 	if not snakefile_path.startswith ( "/" ):
 		snakefile_path = f"{test_dir}/resources/{snakefile_path}"
 
-	os.chdir ( prj_dir )
+	pypath = []
+	if "PYTHONPATH" in os.environ: pypath.append ( os.environ [ "PYTHONPATH" ] )
+	pypath.append ( "tests" )
+	# Snake often includes modules in the same dir where the Snakefile is,
+	pypath.append ( os.path.realpath ( os.path.dirname ( snakefile_path ) ) )
 
+	os.chdir ( prj_dir )
 	
 	# Clean the output dir, if it exists
 	if os.path.exists ( ketl_data_dir_path ):
 		subprocess.run ( [ "rm", "-rf", ketl_data_dir_path ], check = True )
 
-	env = { **os.environ, "KETL_DATA": ketl_data_dir_path, "PYTHONPATH": "tests" }
+	env = { **os.environ, "KETL_DATA": ketl_data_dir_path, "PYTHONPATH": ":".join ( pypath ) }
 	if custom_env:
 		env = { **env, **custom_env }
 

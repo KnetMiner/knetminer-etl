@@ -1,10 +1,12 @@
 # Requires tests/ in PYTHONPATH
 import asyncio
 
-import resources.real_test_case.wf_config as wf_config
+# Local modules require that you do something like pointing PYTHONPATH to 
+# $(dirname workflow.snakefile)
+import wf_config
 from brandizpyes.logging import logger_config
 from pyspark.sql.functions import lit
-from resources.real_test_case.wf_mapping import (
+from wf_mapping import (
 	E2U_ENSEMBL_GENE_ACCESSION_MAPPERS, E2U_ENSEMBL_GENE_MAPPER,
 	E2U_ENSEMBL_PROTEIN_MAPPER, E2U_GENE2PROTEIN_MAPPER,
 	E2U_UNIPROT_ACCESSION_MAPPERS, NEO_LOADER_CONFIG)
@@ -20,13 +22,14 @@ from ketl.spark.utils import (create_spark_session_from_config, df_check_path,
 
 # TODO: ketl logging
 
-KETL_DATA = os.environ [ "KETL_DATA" ]
-KETL_IN = os.path.abspath ( workflow.basedir )
-KETL_OUT = f"{KETL_DATA}/output"
-KETL_TMP = f"{KETL_DATA}/tmp"
 my_dir = os.path.realpath ( workflow.basedir )
 
-log_cfg_path = os.path.realpath ( my_dir + "/../logging-test.yml" )
+KETL_DATA = os.getenv ( "KETL_DATA", my_dir + "/data" )
+KETL_IN = os.getenv ( "KETL_IN", my_dir + "/data/input" )
+KETL_OUT = os.getenv ( "KETL_OUT", KETL_DATA + "/output" )
+KETL_TMP = os.getenv ( "KETL_TMP", KETL_DATA + "/tmp" )
+
+log_cfg_path = os.path.realpath ( my_dir + "/logging.yml" )
 logger_config ( cfg_path = str ( log_cfg_path ) )
 
 
@@ -108,7 +111,7 @@ rule map_ensembl_plants_genes:
 	nodes and edges.
 	"""
 	input:
-		f"{KETL_IN}/ensmbl-uniprot-genes.tsv"
+		f"{KETL_IN}/ensembl-uniprot-genes.tsv"
 	output:
 		df_check_path ( f"{KETL_TMP}/gene-triples.parquet" ),
 		df_check_path ( f"{KETL_TMP}/gene-accession-triples.parquet" ),
@@ -129,7 +132,7 @@ rule map_ensembl_plants_proteins:
 	nodes and edges.
 	"""
 	input:
-		f"{KETL_IN}/ensmbl-uniprot-genes.tsv"
+		f"{KETL_IN}/ensembl-uniprot-genes.tsv"
 	output:
 		df_check_path ( f"{KETL_TMP}/protein-triples.parquet" ),
 		df_check_path ( f"{KETL_TMP}/protein-accession-triples.parquet" ),
@@ -147,7 +150,7 @@ rule map_ensembl_plants_encodes:
 	Maps the TSV input to gene-to-protein triples.
 	"""
 	input:
-		f"{KETL_IN}/ensmbl-uniprot-genes.tsv"
+		f"{KETL_IN}/ensembl-uniprot-genes.tsv"
 	output:
 		df_check_path ( f"{KETL_TMP}/gene2protein.parquet" )
 	run:

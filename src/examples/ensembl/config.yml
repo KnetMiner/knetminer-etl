@@ -1,7 +1,7 @@
 # This is read by KETL config utils.
 #
 # Defaults are commented.
-# As explained elsewhere, we don't use this in our example workflow, for we use config.py instead.
+# As explained elsewhere, we don't use this in our example workflow, for we use wf_config.py instead.
 #
 
 # This is almost 1-1 with the SparkSession.builder factory method.
