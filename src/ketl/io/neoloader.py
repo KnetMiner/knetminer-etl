@@ -11,12 +11,12 @@ Neo4j (eg, multiple-value handling), loading tuning-related settings and reading
 YAML files.
 
 TODO: This is worth a standalone project, to be put in its own github repo and made
-independent on ketl (of course, ketl would become a dependendant).
+independent on ketl (of course, ketl would become a dependant).
 
-TODO: for future documentaton, see some related work (last update, 20260410):
+TODO: for future documentation, see some related work (last update, 20260410):
 - [pg-format-py](https://github.com/pg-format/pg-format-py), very simple, can't work for large inputs.
 - [Parallel Spark Neo4j Loader](https://github.com/neo4j-field/neo4j-parallel-spark-loader), interesting, focuses
-on injesting from Spark DFs. We aim at mapping to PG first and then loading, but TODO: we should test our loader
+on ingesting from Spark DFs. We aim at mapping to PG first and then loading, but TODO: we should test our loader
 with a DF as source.
 """
 
