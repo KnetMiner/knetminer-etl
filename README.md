@@ -18,5 +18,8 @@ TODO: write much more! :-)
 * Python
 * Poetry
 * Apache Spark (and Java)
+  * TODO: for now, 
 * Docker (for Neo4j-related tests that are based on testcontainers)
+* Snakemake
+	* ETL tools can work with your own scripts or, potentially, any workflow manager. We ship them with test and examples based on Snakemake.
 * Other dependencies are [auto-installed by Poetry](pyproject.toml)

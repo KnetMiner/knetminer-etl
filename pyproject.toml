@@ -59,9 +59,9 @@ filterwarnings = [
 ]
 
 # Additional (non src/) files to be included in the distro archives.
-#include = [
-#  { path = "src/examples/**", format = ["sdist", "wheel"] }
-#]
+include = [
+  { path = "src/examples/**", format = ["sdist", "wheel"] }
+]
 
 [tool.poetry.scripts]
 # Utilities to start/stop a Spark cluster on SLURM.
