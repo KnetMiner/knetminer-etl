@@ -7,7 +7,7 @@ export KETL_PRJ_HOME
 
 export KNET_HOME=/home/data/knetminer
 export JAVA_HOME="$KNET_HOME/software/jdk21"
-export NEO4J_HOME="$WF_HOME/neo4j"
+export NEO4J_HOME="$(realpath "$KETL_PRJ_HOME/../neo4j")"
 
 export NEO_TRACK_PATH="$WF_HOME/neo-server"
 export SPARK_TRACK_PATH="$WF_HOME/spark-server"
