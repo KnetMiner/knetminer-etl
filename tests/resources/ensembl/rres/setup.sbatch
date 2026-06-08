@@ -38,9 +38,9 @@ if $do_update; then
 fi
 
 printf "\n|== Starting the Neo4j server\n"
-kslurm-neo-start.sh --track "$NEO_TRACK_PATH" --sbatch "--output=$WF_HOME/neo-server.out --error=$WF_HOME/neo-server.err"
+kslurm-neo-start.sh --track "$NEO_TRACK_PATH" --sbatch "--output=\"$WF_HOME/neo-server.out\" --error=\"$WF_HOME/neo-server.out\""
 
 printf "\n|== Starting the Spark\n"
-kslurm-spark-start.sh --track "$SPARK_TRACK_PATH" --sbatch "--output=$WF_HOME/spark-server.out --error=$WF_HOME/spark-server.err"
+kslurm-spark-start.sh --track "$SPARK_TRACK_PATH" --sbatch "--output=\"$WF_HOME/spark-server.out\" --error=\"$WF_HOME/spark-server.out\""
 
 printf "\n|==== All done, now you can do: srun run.sbatch\n\n"
