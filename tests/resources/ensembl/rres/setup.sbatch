@@ -3,10 +3,16 @@ set -euo pipefail
 
 function usage ()
 {
-	echo "Usage: $0 [--update] [--neo <true|false>] [--spark <true|false>]"
-	echo "  --update: Update the KETL installation from the local distro (dist/knetminer_etl-*.tar.gz)"
-	echo "  --neo: Whether to start the Neo4j server (default: true)"
-	echo "  --spark: Whether to start the Spark server (default: true)"
+	cat <<EOT
+	
+	
+Usage: srun $0 [--update] [--neo <true|false>] [--spark <true|false>]
+	
+Options:
+  --update: Update the KETL installation from the local distro (dist/knetminer_etl-*.tar.gz)
+  --neo: Whether to start the Neo4j server (default: true)
+  --spark: Whether to start the Spark server (default: true)
+EOT
 }
 
 do_update=false
@@ -17,7 +23,8 @@ while [[ $# -gt 0 ]]; do
 		--update) do_update=true; shift ;;
 		--neo) do_neo="$2"; shift 2 ;;
 		--spark) do_spark="$2"; shift 2 ;;
-		*) echo "Unknown option: $1" >&2; exit 1 ;;
+		--help) usage; exit 2 ;;
+		*) echo "Unknown option: $1" >&2; usage; exit 1 ;;
 	esac
 done
 
