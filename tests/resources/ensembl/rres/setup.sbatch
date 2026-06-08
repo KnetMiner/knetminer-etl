@@ -6,12 +6,13 @@ function usage ()
 	cat <<EOT
 	
 	
-Usage: srun $0 [--update] [--neo <true|false>] [--spark <true|false>]
+Usage: srun $0 [--update] [--neo <true|false>] [--spark <true|false>] [--help]
 	
 Options:
   --update: Update the KETL installation from the local distro (dist/knetminer_etl-*.tar.gz)
   --neo: Whether to start the Neo4j server (default: true)
   --spark: Whether to start the Spark server (default: true)
+	--help: Show this help message and exit
 EOT
 }
 
