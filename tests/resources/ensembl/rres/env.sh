@@ -12,8 +12,14 @@ export NEO4J_HOME="$(realpath "$KETL_PRJ_HOME/../neo4j")"
 export NEO_TRACK_PATH="$WF_HOME/neo-server"
 export SPARK_TRACK_PATH="$WF_HOME/spark-server"
 
+export NEO4J_PASSWORD="testTest"
+if [ -e "$SPARK_TRACK_PATH.host" ]; then
+	export SPARK_MASTER="$(cat "$SPARK_TRACK_PATH.host"):$(cat "$SPARK_TRACK_PATH.port")"
+fi
+
 cd "$KETL_PRJ_HOME"
-module load Python/3.12.3-GCCcore-13.3.0 git
+# We don't use the Snake module, since it forced Python 3.10, and that's too old
+module load git Python/3.12.3-GCCcore-13.3.0
 [[ -e venv ]] && . venv/bin/activate \
 	|| printf "|== Virtual env not found at \"%s\", Use --update if needed" "$KETL_PRJ_HOME/venv"
 
