@@ -18,6 +18,10 @@ EOT
 do_update=false
 do_neo=true
 do_spark=true
+
+# Probably not using srun, do usage
+[[ -n "${SLURM_JOBID:-}" ]] || { usage; exit 1; }
+
 while [[ $# -gt 0 ]]; do
 	case "$1" in
 		--update) do_update=true; shift ;;
