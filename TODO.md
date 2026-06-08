@@ -1,3 +1,7 @@
+## Tests and examples
+* [ ] RRes example and tutorial
+
+## General
 * [X] Mark relevant tests as integration tests, via `@pytest.mark.integration`
 * [ ] Neo4j loader
 * [ ] Migrate from AgriSchemas ETL utils
@@ -19,7 +23,7 @@
 * [X] Move from io to its own module
 * [X] Add CLI wrapper
 	* [ ] Add a Bash wrapper?
-* [ ] Loading in Snake workflow
+* [X] Loading in Snake workflow
 * [X] Configuration
 * [X] Get rid of neo warnings
 * [X] Neo retries (in edge creation)

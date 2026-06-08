@@ -15,7 +15,7 @@ KETL_DATA_DIR_PATH = "/tmp/ketl"
 MY_DIR = os.path.dirname ( os.path.abspath ( __file__ ) ) # tests/ketl/snake
 PRJ_DIR = os.path.abspath ( MY_DIR + "/.." * 3 ) # <project_root>
 TEST_DIR = PRJ_DIR + "/tests"
-EXAMPLE_DIR = PRJ_DIR + "/src/ketl/examples/ensembl"
+EXAMPLE_DIR = TEST_DIR + "/resources/ensembl"
 
 
 @pytest.mark.integration

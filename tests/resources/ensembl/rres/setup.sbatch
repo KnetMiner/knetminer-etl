@@ -19,7 +19,11 @@ cd "$mydir"
 . env.sh
 
 if $do_update; then
-	printf "\n|== Updating the KETL installation\n"
+	printf "\n|== Installing/Updating the KETL deployment\n"
+	cd "$KETL_PRJ_HOME"
+	if [[ ! -e venv ]]; then
+		python -m venv venv
+	fi
 	pip install --force --no-deps git+https://github.com/KnetMiner/knetminer-etl
 fi
 
@@ -27,6 +31,6 @@ printf "\n|== Starting the Neo4j server\n"
 kslurm-neo-start.sh --track "$NEO_TRACK_PATH"
 
 printf "\n|== Starting the Spark\n"
-kslurm-neo-start.sh --track "$SPARK_TRACK_PATH"
+kslurm-spark-start.sh --track "$SPARK_TRACK_PATH"
 
-printf "\n|==== All done, now you can run \"%s\"\n\n" "$mydir/run.sbatch"
+printf "\n|==== All done, now you can do: srun \"%s\"\n\n" run.sbatch"
