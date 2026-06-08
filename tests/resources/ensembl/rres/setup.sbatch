@@ -18,13 +18,23 @@ mydir="$(dirname "$mypath")"
 cd "$mydir"
 . env.sh
 
+cd "$KETL_PRJ_HOME"
+
 if $do_update; then
-	printf "\n|== Installing/Updating the KETL deployment\n"
+	printf "\n|== Installing/Updating the KETL deployment from local distro\n"
+
+	# Alternative is git+https://github.com/KnetMiner/knetminer-etl
+	pip_src="dist/knetminer_etl-1.0.0.tar.gz" 
+
 	cd "$KETL_PRJ_HOME"
+
 	if [[ ! -e venv ]]; then
 		python -m venv venv
+		. venv/bin/activate
+		pip install "$pip_src"
+	else
+		pip install --force --no-deps "$pip_src"
 	fi
-	pip install --force --no-deps git+https://github.com/KnetMiner/knetminer-etl
 fi
 
 printf "\n|== Starting the Neo4j server\n"
