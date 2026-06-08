@@ -12,7 +12,7 @@ function stage_build_local
 	poetry $CI_POETRY_DEFAULT_ARGS build
 
   # Are there actual changes to commit?
-	[[ -z "$(git status --porcelain)" ]] && return 0
+	[[ -z "$(git status --porcelain| egrep --invert-match '^\?\?')" ]] && return 0
 	
   printf "== Committing the distribution files\n"
 	git add dist
