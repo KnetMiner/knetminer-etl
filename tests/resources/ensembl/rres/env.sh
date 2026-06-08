@@ -13,6 +13,11 @@ export NEO_TRACK_PATH="$WF_HOME/neo-server"
 export SPARK_TRACK_PATH="$WF_HOME/spark-server"
 
 export NEO4J_PASSWORD="testTest"
+if [[ -e "$NEO_TRACK_PATH.host" ]]; then
+	# The port is hardcoded in neo4j.conf
+	export NEO4J_URL="bolt://$(cat "$NEO_TRACK_PATH.host"):8687"
+fi
+
 if [ -e "$SPARK_TRACK_PATH.host" ]; then
 	export SPARK_MASTER="$(cat "$SPARK_TRACK_PATH.host"):$(cat "$SPARK_TRACK_PATH.port")"
 fi
