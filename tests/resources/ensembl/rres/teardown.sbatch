@@ -11,9 +11,9 @@ cd "$mydir"
 . env.sh
 
 printf "\n|== Stopping the Neo4j server\n"
-kslurm-neo-stop.sh --track "$NEO_TRACK_PATH"
+kslurm-neo-stop.sh --track "$NEO_TRACK_PATH" || true
 
 printf "\n|== Stopping the Spark\n"
-kslurm-spark-stop.sh --track "$SPARK_TRACK_PATH"
+kslurm-spark-stop.sh --track "$SPARK_TRACK_PATH" || true
 
 printf "\n|==== All done\n\n"

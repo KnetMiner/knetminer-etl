@@ -43,4 +43,4 @@ kslurm-neo-start.sh --track "$NEO_TRACK_PATH"
 printf "\n|== Starting the Spark\n"
 kslurm-spark-start.sh --track "$SPARK_TRACK_PATH"
 
-printf "\n|==== All done, now you can do: srun \"%s\"\n\n" run.sbatch"
+printf "\n|==== All done, now you can do: srun run.sbatch\n\n"
