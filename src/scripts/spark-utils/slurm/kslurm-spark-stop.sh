@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-export SPARK_TRACK_PATH="spark-server"
+# non-exported vars are passed down as arguments, while the exported vars are picked as
+# such downstream too.
+export SPARK_TRACK_PATH="${SPARK_TRACK_PATH:-spark-server}"
 
 function usage() {
   cat <<EOT

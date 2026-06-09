@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-NEO_TRACK_PATH="neo-server"
-NEO_STOP_TIMEOUT=120
-
+# non-exported vars are passed down as arguments, while the exported vars are picked as
+# such downstream too.
+export NEO_TRACK_PATH="${NEO_TRACK_PATH:-neo-server}"
+export NEO_STOP_TIMEOUT="${NEO_STOP_TIMEOUT:-120}"
 
 function usage() {
 	cat <<EOT
@@ -24,6 +25,7 @@ EOT
 while [[ $# -gt 0 ]]; do
 	case "$1" in
 		--track) NEO_TRACK_PATH="$2"; shift 2 ;;
+		--stop-timeout) NEO_STOP_TIMEOUT="$2"; shift 2 ;;
 		--help)         usage; exit 0 ;;
 		*) echo "Unknown option: $1" >&2; usage >&2; exit 1 ;;
 	esac

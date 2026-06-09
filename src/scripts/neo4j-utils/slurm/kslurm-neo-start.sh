@@ -4,13 +4,15 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 my_base_name="$(basename "${BASH_SOURCE[0]}" '.sh')"
 
-export NEO_RAM=4
-export NEO_CORES=4
-export NEO_TIME="02:00:00"
-export NEO_TRACK_PATH="neo-server"
-export NEO_STOP_TIMEOUT=120
-sbatch_opts=""
-
+# non-exported vars are passed down as arguments, while the exported vars are picked as
+# such downstream too.
+#
+neo_ram="${NEO_RAM:-4}"
+neo_cores="${NEO_CORES:-4}"
+neo_time="${NEO_TIME:-02:00:00}"
+export NEO_TRACK_PATH="${NEO_TRACK_PATH:-neo-server}"
+export NEO_STOP_TIMEOUT="${NEO_STOP_TIMEOUT:-120}"
+export sbatch_opts="${KETL_SBATCH_OPTS:-""}"
 
 function usage() {
   cat <<EOT
@@ -25,10 +27,10 @@ just tries to launch 'neo4j' if it can't find NEO4J_HOME.
 
 Options:
 
-	--ram <num>             RAM requested for the running node, in GB (default: $NEO_RAM)
-	--cores <num>           Number of CPU cores requested for the running node (default: $NEO_CORES)
+	--ram <num>             RAM requested for the running node, in GB (default: $neo_ram)
+	--cores <num>           Number of CPU cores requested for the running node (default: $neo_cores)
 	--time <duration>       SLURM time limit (passed to sbatch --time), e.g. 02:00:00 
-													(default: $NEO_TIME)
+													(default: $neo_time)
 	--stop-timeout <secs>   Shutdown timeout in seconds (default: $NEO_STOP_TIMEOUT). When stopping
 	                        Neo, it is killed with SIGKILL if it doesn't stop within this time 
 													more gently.
@@ -45,9 +47,9 @@ EOT
 
 while [[ $# -gt 0 ]]; do
 	case "$1" in
-		--ram)          NEO_RAM="$2";          shift 2 ;;
-		--cores)        NEO_CORES="$2";        shift 2 ;;
-		--time)         NEO_TIME="$2";         shift 2 ;;
+		--ram)          neo_ram="$2";          shift 2 ;;
+		--cores)        neo_cores="$2";        shift 2 ;;
+		--time)         neo_time="$2";         shift 2 ;;
 		--track)        NEO_TRACK_PATH="$2";   shift 2 ;;
 		--stop-timeout)  NEO_STOP_TIMEOUT="$2"; shift 2 ;;
 		--sbatch)       sbatch_opts+=" $2";     shift 2 ;;
@@ -64,9 +66,9 @@ printf "\n\n|==== Starting Neo4j\n\n"
 # Show and capture the output
 exec 3>&1
 submit_out=$(sbatch \
-  --cpus-per-task="$NEO_CORES" \
-  --mem="${NEO_RAM}G" \
-  --time="$NEO_TIME" \
+  --cpus-per-task="$neo_cores" \
+  --mem="${neo_ram}G" \
+  --time="$neo_time" \
   $sbatch_opts \
   "$sbatch_path" \
   | tee >(cat >&3) \

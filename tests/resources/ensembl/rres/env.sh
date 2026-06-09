@@ -23,10 +23,19 @@ if [ -e "$SPARK_TRACK_PATH.host" ]; then
 fi
 
 cd "$KETL_PRJ_HOME"
-# We don't use the Snake module, since it forced Python 3.10, and that's too old
-module load git Python/3.12.3-GCCcore-13.3.0
-[[ -e venv ]] && . venv/bin/activate \
-	|| printf "|== Virtual env not found at \"%s\", Use --update if needed" "$KETL_PRJ_HOME/venv"
 
 [[ -z "$PYTHONPATH" ]] || PYTHONPATH="$PYTHONPATH:"
 export PYTHONPATH="${PYTHONPATH}${WF_HOME}"
+
+# This is a bad guy, who often gets jobs delivered, but it refuses them with execve error
+export KETL_SBATCH_OPTS="${KETL_SBATCH_OPTS:-"-x rothhpc407"}"
+
+
+# The following makes sense only when we're in a SBATCH job
+[[ -n "${SLURM_JOBID:-}" ]] || exit
+
+# We don't use the Snake module, since it forced Python 3.10, and that's too old.
+# setup.sbatch can install Snake into the current venv
+module load git Python/3.12.3-GCCcore-13.3.0
+[[ -e venv ]] && . venv/bin/activate \
+	|| printf "|== Virtual env not found at \"%s\", Use --update if needed" "$KETL_PRJ_HOME/venv"

@@ -66,12 +66,14 @@ fi
 
 if $do_neo; then
 	printf "\n|== Starting the Neo4j server\n"
-	kslurm-neo-start.sh --track "$NEO_TRACK_PATH" --sbatch "--output=$WF_HOME/neo-server.out --error=$WF_HOME/neo-server.out"
+	kslurm-neo-start.sh --track "$NEO_TRACK_PATH" \
+	  --sbatch "$KETL_SBATCH_OPTS --output=$WF_HOME/neo-server.out --error=$WF_HOME/neo-server.out"
 fi
 
 if $do_spark; then
 	printf "\n|== Starting the Spark\n"
-	kslurm-spark-start.sh --track "$SPARK_TRACK_PATH" --sbatch "--output=$WF_HOME/spark-server.out --error=$WF_HOME/spark-server.out"
+	kslurm-spark-start.sh --track "$SPARK_TRACK_PATH" \
+	  --sbatch "$KETL_SBATCH_OPTS --output=$WF_HOME/spark-server.out --error=$WF_HOME/spark-server.out"
 fi
 
 printf "\n|==== All done, now you can do: srun run.sbatch\n\n"
