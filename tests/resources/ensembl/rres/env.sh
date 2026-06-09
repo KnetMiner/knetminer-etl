@@ -24,15 +24,14 @@ fi
 
 cd "$KETL_PRJ_HOME"
 
-[[ -z "$PYTHONPATH" ]] || PYTHONPATH="$PYTHONPATH:"
-export PYTHONPATH="${PYTHONPATH}${WF_HOME}"
+export PYTHONPATH="${PYTHONPATH:+$PYTHONPATH:}$WF_HOME"
 
 # This is a bad guy, who often gets jobs delivered, but it refuses them with execve error
 export KETL_SBATCH_OPTS="${KETL_SBATCH_OPTS:-"-x rothhpc407"}"
 
 
 # The following makes sense only when we're in a SBATCH job
-[[ -n "${SLURM_JOBID:-}" ]] || exit
+[[ -n "${SLURM_JOBID:-}" ]] || return 0
 
 # We don't use the Snake module, since it forced Python 3.10, and that's too old.
 # setup.sbatch can install Snake into the current venv
