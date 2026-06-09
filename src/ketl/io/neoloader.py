@@ -334,7 +334,11 @@ async def async_pg_jsonl_neo_loader (
 		# operations (eg, json.loads()) releases the GIL.
 		# However, since things might be different with different inputs, we're leaving the 
 		# InterpreterPoolExecutor. TODO: at least for now.
-		with concurrent.futures.InterpreterPoolExecutor ( max_workers = config.loader_max_concurrency ) \
+		# Having said that, we also check if the interpreter pool is available, since 
+		# it was introduced in Python 3.14 and we have deployments around with a lower version
+		executor_cls = concurrent.futures.InterpreterPoolExecutor if hasattr( concurrent.futures, "InterpreterPoolExecutor" ) \
+			else concurrent.futures.ThreadPoolExecutor
+		with executor_cls ( max_workers = config.loader_max_concurrency ) \
 		as executor:
 			while True:
 				batch = list ( islice ( pg_elems_source, config.loader_batch_size ) )
