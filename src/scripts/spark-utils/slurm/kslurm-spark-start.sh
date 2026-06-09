@@ -8,9 +8,8 @@ my_base_name="$(basename "${BASH_SOURCE[0]}" '.sh')"
 # such downstream too.
 #
 spark_nodes="${SPARK_NODES:-3}"
-spark_cores="${SPARK_CORES:-4}"
-# This is both passed as sbatch --mem and as variable, since the .sbatch needs it to 
-# decide how much RAM to give to the Spark processes
+# These are both passed as sbatch arguments and as variable, since the .sbatch needs them too
+export SPARK_CORES="${SPARK_CORES:-4}"
 export SPARK_RAM="${SPARK_RAM:-4}"
 spark_time="${SPARK_TIME:-02:00:00}"
 export SPARK_TRACK_PATH="${SPARK_TRACK_PATH:-spark-server}"
@@ -30,7 +29,7 @@ Start a Spark standalone cluster as a SLURM job.
 Options:
 
   --nodes <num>           Number of Spark nodes, including the master (default: $spark_nodes)
-  --cores <num>           Cores per node (default: $spark_cores)
+  --cores <num>           Cores per node (default: $SPARK_CORES)
   --ram <num>             RAM per node in GB (default: $SPARK_RAM)
                           (the Spark process is given 1 GB less)
   --time <duration>       SLURM time limit (passed to sbatch --time), e.g. 02:00:00 
@@ -63,7 +62,7 @@ EOT
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --nodes)        spark_nodes="$2";        shift 2 ;;
-    --cores)        spark_cores="$2";        shift 2 ;;
+    --cores)        SPARK_CORES="$2";        shift 2 ;;
     --ram)          SPARK_RAM="$2";          shift 2 ;;
     --time)         spark_time="$2";         shift 2 ;;
     --track)        SPARK_TRACK_PATH="$2";   shift 2 ;;
@@ -84,7 +83,7 @@ printf "\n\n|==== Starting the Spark cluster\n\n"
 exec 3>&1
 submit_out=$(sbatch \
   --nodes="$spark_nodes" \
-  --cpus-per-task="$spark_cores" \
+  --cpus-per-task="$SPARK_CORES" \
   --mem="${SPARK_RAM}G" \
   --time="$spark_time" \
   $sbatch_opts \
