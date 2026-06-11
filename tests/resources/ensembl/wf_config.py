@@ -23,9 +23,13 @@ def get_spark_session ( app_name_postfix: str = "" ) -> SparkSession:
 	if app_name_postfix and not app_name_postfix.startswith ( ("_", "-", ".", ":", "/") ):
 		app_name_postfix = ":" + app_name_postfix
 	return SparkSession.builder\
-		.master ( os.getenv ( "SPARK_MASTER", "local[*]" ) )\
-		.appName ( "ketl-ensembl" + app_name_postfix )\
+		.master( os.getenv ( "SPARK_MASTER_URL", "local[*]" ) )\
+		.appName( "ketl-ensembl" + app_name_postfix )\
+		.config( "spark.executor.memory", os.getenv ( "SPARK_CLI_RAM", "1G" ) )\
+		.config( "spark.cores.max", os.getenv ( "SPARK_CLI_CORES_MAX", "4" ) )\
+		.config( "spark.executor.cores", os.getenv ( "SPARK_CLI_CORES", "2" ) )\
 		.getOrCreate()
+
 
 def create_neo4j_driver () -> neo4j.AsyncDriver:
 	driver = neo4j.AsyncGraphDatabase.driver ( 

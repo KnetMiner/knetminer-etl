@@ -19,7 +19,7 @@ if [[ -e "$NEO_TRACK_PATH.host" ]]; then
 fi
 
 if [ -e "$SPARK_TRACK_PATH.host" ]; then
-	export SPARK_MASTER="$(cat "$SPARK_TRACK_PATH.host"):$(cat "$SPARK_TRACK_PATH.port")"
+	export SPARK_MASTER_URL="spark://$(cat "$SPARK_TRACK_PATH.host"):$(cat "$SPARK_TRACK_PATH.port")"
 fi
 
 cd "$KETL_PRJ_HOME"

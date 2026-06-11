@@ -1,5 +1,5 @@
 ## Tests and examples
-* [ ] RRes example and tutorial
+* [ ] Document RRes and local examples, write a tutorial
 
 ## General
 * [X] Mark relevant tests as integration tests, via `@pytest.mark.integration`

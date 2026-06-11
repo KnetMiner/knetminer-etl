@@ -15,7 +15,7 @@ fi
 master_host=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 1)
 worker_nodes=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | tail -n +2)
 
-echo "|== Starting Spark master on $master_host (job $SLURM_JOB_ID)"
+echo "|== Starting Spark master on $master_host (job $SLURM_JOB_ID), port $SPARK_PORT, web UI port $SPARK_WEB_PORT"
 
 # Start master on this node (the job's first node)
 "$spark_class_cmd" org.apache.spark.deploy.master.Master \
