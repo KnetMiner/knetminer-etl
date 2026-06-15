@@ -51,6 +51,8 @@ def triples_2_pg_df (
 	# Let the show begin
 	triples_df = df_load ( triples_df_or_path, spark )
 
+	log.info ( f"Converting triples to PG-Format DataFrame" )
+
 	# The DF that collects the node labels/types
 	type_df = triples_df.filter ( F.col ( "key" ) == GraphProperty.TYPE_KEY )
 	type_labels_df = type_df.groupBy ( "id" ).agg ( F.collect_set ( "value" ).alias ( "labels" ) )
@@ -114,6 +116,8 @@ def triples_2_pg_df (
 	# - id
 	# - #labels > 0 and = 1 for edges (concern of neoloader)
 	# - from/to present if EDGE, and not null
+
+	log.info ( f"PG-Format DataFrame created, returning it for use" )
 
 	# Save if requested
 	if out_path:

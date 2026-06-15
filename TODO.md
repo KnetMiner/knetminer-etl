@@ -9,7 +9,7 @@
 * [X] CI
 * [X] isort and other code quality tools
 * [X] Some more module renaming, eg, test_ketl -> test_core
-* [ ] Compression options: output of pg_df_2_pg_jsonl(), input of NeoLoader
+* [ ] Compression options: output of `pg_df_2_pg_jsonl()`, input of `NeoLoader`
 
 ## NeoLoader
 * [X] More logs

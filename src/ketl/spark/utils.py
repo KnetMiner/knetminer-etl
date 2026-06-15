@@ -54,6 +54,7 @@ def df_save (
 	You won't need this often, we return it mainly to support tests.
 	"""
 
+	path = df_path ( path )
 	log.info ( f"Saving DataFrame to {path}" )
 
 	size = df_rough_size ( df )
@@ -69,7 +70,6 @@ def df_save (
 	else:
 		log.debug ( f"Keeping current partition count: {current_partitions}" )
 
-	path = df_path ( path )
 	df.write.mode ( "overwrite" ).parquet ( path )
 	log.info ( f"DataFrame saved" )
 	return df

@@ -18,8 +18,8 @@ if [[ -e "$NEO_TRACK_PATH.host" ]]; then
 	export NEO4J_URL="bolt://$(cat "$NEO_TRACK_PATH.host"):8687"
 fi
 
-if [ -e "$SPARK_TRACK_PATH.host" ]; then
-	export SPARK_MASTER_URL="spark://$(cat "$SPARK_TRACK_PATH.host"):$(cat "$SPARK_TRACK_PATH.port")"
+if [ -e "$SPARK_TRACK_PATH.master" ]; then
+	export SPARK_MASTER_URL="spark://$(cat "$SPARK_TRACK_PATH.master"):$(cat "$SPARK_TRACK_PATH.port")"
 fi
 
 cd "$KETL_PRJ_HOME"
