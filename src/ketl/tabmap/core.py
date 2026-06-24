@@ -193,7 +193,17 @@ class ColumnTripleMapper ( ColumnValueMapper, RowTripleMapper ):
 		self._init ( property if property else column_id )
 
 
-class SparkDataFrameMapper:
+class SparkDataFrameMapperBase:
+	"""
+	Base class to define the essential elements in a mapper that maps a :class:`pyspark.sql.DataFrame` 
+	into another mapper, consisting of a set of :class:`ketl.GraphTriple` rows.
+	"""
+	@abstractmethod
+	def map ( self, df: DataFrame ) -> DataFrame:
+		pass
+
+
+class SparkDataFrameMapper ( SparkDataFrameMapperBase ):
 	"""
 	The Spark DataFrame mapper.
 	

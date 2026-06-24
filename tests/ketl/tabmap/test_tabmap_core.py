@@ -8,7 +8,7 @@ import os
 
 import pytest
 from assertpy import assert_that
-from pyspark.sql import DataFrame
+from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.types import IntegerType
 
 import ketl.helpers as khelpers
@@ -279,7 +279,7 @@ class TestColumnTripleMapper:
 @pytest.mark.usefixtures ( "spark_session" )
 class TestSparkDataFrameMapper:
 
-	def test_map ( self, spark_session ):
+	def test_map ( self, spark_session: SparkSession ):
 		data = [
 			{ "id": "001", "name": "Alice", "age": 30, "city": "Wonderland" },
 			{ "id": "002", "name": "Bob", "age": 25, "city": "Builderland" },
@@ -314,7 +314,7 @@ class TestSparkDataFrameMapper:
 		)
 	# /test_map
 
-	def test_map_constants ( self, spark_session ):
+	def test_map_constants ( self, spark_session: SparkSession ):
 		data = [
 			{ "id": "001", "name": "Alice", "age": 30, "city": "Wonderland" },
 			{ "id": "002", "name": "Bob", "age": 25, "city": "Builderland" },
@@ -384,7 +384,7 @@ class TestSparkDataFrameMapper:
 	# /test_map_constants
 
 	
-	def test_from_extractor_row_mapper ( self, spark_session ):
+	def test_from_extractor_row_mapper ( self, spark_session: SparkSession ):
 		data = [
 			{ "gene accession": "GENE001", "protein accession": "PROT001", "reference": "122030434" },
 			{ "gene accession": "GENE002", "protein accession": "PROT002" }
@@ -445,7 +445,7 @@ class TestSparkDataFrameMapper:
 	# /test_from_extractor_row_mapper
 		
 
-	def test_auto_edge_id ( self, spark_session ):
+	def test_auto_edge_id ( self, spark_session: SparkSession ):
 		"""
 		Tests RowValueMapper.for_edge_id_auto() together with SparkDataFrameMapper.
 		"""
@@ -493,7 +493,7 @@ class TestTabFileMapper:
 		argnames = "is_infer_schema", 
 		argvalues = [ False, True ], 
 	)
-	def	test_mapping_tsv ( self, spark_session, is_infer_schema: bool ):
+	def	test_mapping_tsv ( self, spark_session: SparkSession, is_infer_schema: bool ):
 		
 		# This also shows how a configuration in a real case would look like.
 		# A config file might define a constant like tb_mapper here and then this

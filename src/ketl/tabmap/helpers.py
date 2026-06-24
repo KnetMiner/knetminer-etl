@@ -7,8 +7,9 @@ from typing import Any
 
 from ketl.core import (ConstantTripleMapper, GraphTriple, ValueConverter,
                        ValueMapper)
-from ketl.tabmap.core import ColumnValueMapper, RowTripleMapper, RowValueMapper
+from ketl.tabmap.core import ColumnValueMapper, RowTripleMapper, RowValueMapper, SparkDataFrameMapper, SparkDataFrameMapperBase
 
+from pyspark.sql import DataFrame
 
 def row_value_mapper ( 
 	fun: Callable [ [ dict[ str, Any ] ], Any|None ]
@@ -164,3 +165,31 @@ def edge_id ( type_id: str, from_id: str, to_id: str ) -> str:
 	if not ( type_id and from_id and to_id ):
 		raise ValueError ( f"Cannot build edge ID from empty type/from/to IDs" )
 	return f"{type_id}:{from_id}-{to_id}"
+
+
+def df_mappers_chain ( *df_mappers: SparkDataFrameMapperBase ) -> SparkDataFrameMapperBase:
+	"""
+	Chains multiple :class:`ketl.tabmap.SparkDataFrameMapperBase` instances into a single one, which 
+	applies a union of the triples coming from the underlying mappers.
+
+	In the current version of KETL, the input to this function is likely to be :class:`ketl.tabmap.SparkDataFrameMapper`,
+	since the only useable concrete subclass of the base.
+	"""
+	if not df_mappers:
+		raise ValueError ( "df_mappers_chain(): no mappers given" )
+	if len ( df_mappers ) == 1:
+		return df_mappers [ 0 ]
+	
+	class ChainedDFMapper ( SparkDataFrameMapperBase ):
+		def __init__ ( self, mappers: list[SparkDataFrameMapperBase] ):
+			self.mappers = mappers
+
+		def map ( self, df: SparkDataFrameMapperBase ) -> SparkDataFrameMapperBase:
+			df_out = None
+			for mapper in self.mappers:
+				this_df_out = mapper.map ( df )
+				df_out = this_df_out if df_out is None else df_out.union ( this_df_out )
+			return df_out
+
+	return ChainedDFMapper ( mappers = list ( df_mappers ) )
+
