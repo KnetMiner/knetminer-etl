@@ -686,39 +686,38 @@ def pg_jsonl_neo_loader_cli ( args: list[str], do_sys_exit: bool = True ) -> Non
 		else: return 2
 
 	exit_code = 0
-
-	# Get the config
-	config = load_config ( Path ( parsed_args.config ) ) if parsed_args.config \
-	else {} # else use the defaults
-
-  # Neo defaults
-	if not "neo4j" in config:
-		config [ "neo4j" ] = {
-			"uri": "bolt://localhost:7687"
-		}
-	if not "auth" in config [ "neo4j" ]:
-		config [ "neo4j" ] [ "auth" ] = {
-			"user": "neo4j",
-			"password": "neo4j"
-		}
-	
-	# These CLI args override the config (ie, the defaults or the loaded file)
-	if parsed_args.neo_uri:
-		config [ "neo4j" ] [ "uri" ] = parsed_args.neo_uri
-	if parsed_args.neo_user:
-		config [ "neo4j" ] [ "auth" ] [ "user" ] = parsed_args.neo_user
-	if parsed_args.neo_password:
-		config [ "neo4j" ] [ "auth" ] [ "password" ] = parsed_args.neo_password
-
-	neo_driver = create_neo_driver_from_config ( config.get ( "neo4j" ), is_async = True )
-	
-	# If not available, it just creates a default object
-	config = NeoLoaderConfig.from_config ( config.get ( "neoloader" ) )
-
-	# If both nodes and edges, the loader will fail, we're delegating the error handling to it
-	source = Path ( parsed_args.source ) if parsed_args.source else None
-
 	try:
+		# Get the config
+		config = load_config ( Path ( parsed_args.config ) ) if parsed_args.config \
+		else {} # else use the defaults
+
+		# Neo defaults
+		if not "neo4j" in config:
+			config [ "neo4j" ] = {
+				"uri": "bolt://localhost:7687"
+			}
+		if not "auth" in config [ "neo4j" ]:
+			config [ "neo4j" ] [ "auth" ] = {
+				"user": "neo4j",
+				"password": "neo4j"
+			}
+		
+		# These CLI args override the config (ie, the defaults or the loaded file)
+		if parsed_args.neo_uri:
+			config [ "neo4j" ] [ "uri" ] = parsed_args.neo_uri
+		if parsed_args.neo_user:
+			config [ "neo4j" ] [ "auth" ] [ "user" ] = parsed_args.neo_user
+		if parsed_args.neo_password:
+			config [ "neo4j" ] [ "auth" ] [ "password" ] = parsed_args.neo_password
+
+		neo_driver = create_neo_driver_from_config ( config.get ( "neo4j" ), is_async = True )
+		
+		# If not available, it just creates a default object
+		config = NeoLoaderConfig.from_config ( config.get ( "neoloader" ) )
+
+		# If both nodes and edges, the loader will fail, we're delegating the error handling to it
+		source = Path ( parsed_args.source ) if parsed_args.source else None
+
 		# As said above, we need to wrap this as follow.
 		#
 		loader_call = lambda: async_pg_jsonl_neo_loader (
@@ -730,8 +729,11 @@ def pg_jsonl_neo_loader_cli ( args: list[str], do_sys_exit: bool = True ) -> Non
 			config = config
 		)
 		asyncio.run ( run_loader_and_close_driver ( loader_call, neo_driver ) )
+		
 	except Exception as ex:
-		exit_code = 1
+		if exit_code == 0:
+			# It can't be 0 at this point, it's a generic 1 unless it was already set to something else
+			exit_code = 1
 		log.error ( f"pg_jsonl_neo_loader_cli(), loading failed: {ex}", exc_info = True )
 	
 	if do_sys_exit:
