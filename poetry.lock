@@ -1924,14 +1924,14 @@ files = [
 
 [[package]]
 name = "snakemake"
-version = "9.22.0"
+version = "9.23.1"
 description = "Workflow management system to create reproducible and scalable data analyses"
 optional = false
 python-versions = ">=3.11"
 groups = ["dev"]
 files = [
-    {file = "snakemake-9.22.0-py3-none-any.whl", hash = "sha256:ba980ee8184e325add5eede8bdf675ffdf7384993ce110e6634cbdbc887be86e"},
-    {file = "snakemake-9.22.0.tar.gz", hash = "sha256:7c276c775a04a85c5a2de3e28f123a1dda6974ce5d6d52de758cd37b5d839cc7"},
+    {file = "snakemake-9.23.1-py3-none-any.whl", hash = "sha256:9fdbfff25f1b442cdf7906ca06b465fc24b9bf72e2d51514fb93d83e3f8aeb35"},
+    {file = "snakemake-9.23.1.tar.gz", hash = "sha256:ef8d698bfce66a6669cc29df7e344b0b367fd90956c725e5ae0a79a556e8e93f"},
 ]
 
 [package.dependencies]
@@ -2539,4 +2539,4 @@ pyyaml = ">=6.0,<7.0"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4.0"
-content-hash = "645de88789afe4e13ca7a930498ad8ba80687c9ae3a704b84cf3060a79ae5088"
+content-hash = "52048f7acbab171f65d1eefe8159fcd60ae46dcf27354c8b0f519f09bcadf82d"
