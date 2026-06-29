@@ -2,6 +2,7 @@ import json
 
 from assertpy import assert_that
 from pyspark.sql import SparkSession
+import pytest
 
 from ketl.core import GraphProperty, GraphTriple, PGElementType, ValueConverter
 from ketl.io.core import pg_df_2_pg_jsonl, triples_2_pg_df
@@ -14,6 +15,7 @@ import ketl.mappings.knetminer as knetmaps
 
 vconverter = ValueConverter.get_default ()
 
+@pytest.mark.integration
 def test_add_accession_tabmapper ( spark_session: SparkSession ):
 	data = [ [ "gene id", "gene name", "accession" ],
 		[ "GENE001", "Gene 1", "ACC001" ],
@@ -74,6 +76,7 @@ def test_add_accession_tabmapper ( spark_session: SparkSession ):
 		).is_length ( 1 )
 
 
+@pytest.mark.integration
 def test_add_accession_tabmapper_source_from_column ( spark_session: SparkSession ):
 	data = [ [ "gene id", "gene name", "accession", "source" ],
 		[ "GENE001", "Gene 1", "ACC001", "ENSEMBL" ],
@@ -113,6 +116,7 @@ def test_add_accession_tabmapper_source_from_column ( spark_session: SparkSessio
 		).is_length ( 1 )
 
 
+@pytest.mark.integration
 def test_add_accession_tabmapper_source_from_mapper ( spark_session: SparkSession ):
 	def source_extractor ( row: dict[str, str] ) -> str | None:
 		source = row.get ( "source" )
@@ -159,6 +163,7 @@ def test_add_accession_tabmapper_source_from_mapper ( spark_session: SparkSessio
 		).is_length ( 1 )
 
 
+@pytest.mark.integration
 def test_add_accession_tabmapper_multiple_accessions ( spark_session: SparkSession ):
 	data = [ [ "gene id", "gene name", "accession" ],
 		[ "GENE001", "Gene 1", "ACC001.1" ],
