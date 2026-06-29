@@ -43,7 +43,8 @@ class RowValueMapper ( ValueMapper ):
 		:class:`ketl.tabmap.SparkDataFrameMapper` skip empty rows.
 
 		If `converter` is set, the method turns an initial value into a serialised string (see the docstring
-		of :class:`ketl.ValueConverter`).
+		of :class:`ketl.ValueConverter`). This should be set for regular properties and not for 
+		properties like node IDs.
 
 		The method can be affected by :meth:`with_value_wrapper` (again, see `ValueMapper`).
 		"""

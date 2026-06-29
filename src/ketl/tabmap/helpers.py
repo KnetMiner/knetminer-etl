@@ -7,7 +7,7 @@ from typing import Any
 
 from ketl.core import (ConstantTripleMapper, GraphTriple, ValueConverter,
                        ValueMapper)
-from ketl.tabmap.core import ColumnValueMapper, RowTripleMapper, RowValueMapper, SparkDataFrameMapper, SparkDataFrameMapperBase
+from ketl.tabmap.core import ColumnValueMapper, RowTripleMapper, RowValueMapper, SparkDataFrameMapperBase
 
 from pyspark.sql import DataFrame
 
@@ -19,6 +19,11 @@ def row_value_mapper (
 
 	The function `fun` follows the contract of the :meth:`ketl.tabmap.RowValueMapper.value` method, ie, it 
 	receives a non-empty row dictionary and None results are ignored.
+
+	This value extraction function doesn't receive a converter, for the conversion is dealt with
+	by the mapper that we generate, in the usual way, described in :class:`ketl.tabmap.RowValueMapper`. If
+	you need a custom conversion logic, then define a value mapper on your own, don't use this
+	helper.
 
 	Similarly, the other parameters are passed to the constructor of :class:`ketl.tabmap.RowValueMapper`.
 	"""
@@ -192,4 +197,3 @@ def df_mappers_chain ( *df_mappers: SparkDataFrameMapperBase ) -> SparkDataFrame
 			return df_out
 
 	return ChainedDFMapper ( mappers = list ( df_mappers ) )
-
