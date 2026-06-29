@@ -1495,13 +1495,13 @@ dev = ["build", "flake8", "mypy", "pytest", "twine"]
 
 [[package]]
 name = "pyspark"
-version = "4.1.1"
+version = "4.1.2"
 description = "Apache Spark Python API"
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "pyspark-4.1.1.tar.gz", hash = "sha256:77f78984aa84fbe865c717dd37b49913b4e5c97d76ef6824f932f1aefa6621ec"},
+    {file = "pyspark-4.1.2.tar.gz", hash = "sha256:fa5d6159f700d0990a07f4f62df1b7449401dccee9cd7d5d6df8957530841602"},
 ]
 
 [package.dependencies]
@@ -2539,4 +2539,4 @@ pyyaml = ">=6.0,<7.0"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.12,<4.0"
-content-hash = "645de88789afe4e13ca7a930498ad8ba80687c9ae3a704b84cf3060a79ae5088"
+content-hash = "dabe0e332b71d8ce73bc3a5e58b985e66c05f0514367be39f250c06e8f51fbc7"
