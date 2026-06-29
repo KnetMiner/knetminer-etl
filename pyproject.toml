@@ -29,7 +29,7 @@ packages = [
 [dependency-groups]
 dev = [
     "pandas (>=2.3.3,<3.0.0)",
-    "pytest (>=9.0.3,<10.0.0)",
+    "pytest (>=9.1.1,<10.0.0)",
     "assertpy (>=1.1,<2.0)",
     # autoflake and isort are useful when you want to clean up the code
     # Currently, there is no automation in this project to do so, since I prefer to do it manually
