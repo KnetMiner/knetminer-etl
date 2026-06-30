@@ -26,7 +26,7 @@ def pytest_configure ( config ):
 	logger_config ( __name__, cfg_path = cfg_path )
 
 
-@pytest.fixture ( name = "spark_session", scope = "module" )
+@pytest.fixture ( name = "spark_session", scope = "session" )
 def create_spark_session_fixture () -> Generator[ SparkSession, None, None ]:
 	"""
 	Creates a Spark session as a pytest fixture, which can be injected into tests
