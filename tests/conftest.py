@@ -50,7 +50,7 @@ def create_spark_session_fixture () -> Generator[ SparkSession, None, None ]:
 	spark_session.stop ()
 
 
-@pytest.fixture ( scope = "module" )
+@pytest.fixture ( scope = "session" )
 def neo4j_container() -> Generator[ Neo4jContainer, None, None ]:
 	"""
 	The test container common to all driver fixtures and all the tests.
@@ -82,7 +82,7 @@ def create_async_neo_driver ( neo4j_container: Neo4jContainer ) -> neo4j.AsyncDr
 	return driver
 
 
-@pytest.fixture ( scope = "module" )
+@pytest.fixture ( scope = "session" )
 def neo_driver ( neo4j_container: Neo4jContainer ) -> Generator[ neo4j.Driver, None, None ]:
 	"""
 	Yields a driver connected to the test container.

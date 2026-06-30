@@ -17,6 +17,10 @@ PRJ_DIR = os.path.abspath ( MY_DIR + "/.." * 3 ) # <project_root>
 TEST_DIR = PRJ_DIR + "/tests"
 EXAMPLE_DIR = TEST_DIR + "/resources/ensembl"
 
+# TODO: this repeats what's already in wf_mapping.py, but importing the latter needs fixing 
+# the pytest/poetry paths
+KETL_SOURCE = os.environ.get ( "KETL_SOURCE", "tests/ketl/snake/test_real_case.py" )
+
 
 @pytest.mark.integration
 def test_neo_nodes ( neo_driver: neo4j.Driver, genes_csv: pd.DataFrame ) -> None:
@@ -35,7 +39,7 @@ def test_neo_nodes ( neo_driver: neo4j.Driver, genes_csv: pd.DataFrame ) -> None
 			( "Protein", n_expected_proteins ),
 			( "Accession", n_expected_accessions )
 		]:
-			qry = f"MATCH (n:{label}) RETURN COUNT(n) AS n"
+			qry = f"MATCH (n:{label}) WHERE n.`ketl:source` = '{KETL_SOURCE}' RETURN COUNT(n) AS n"
 			result = session.run ( qry ).single ()
 			n_nodes = result["n"]
 			assert_that ( n_nodes, f"Number of {label} nodes in Neo4j is correct" )\
@@ -58,7 +62,7 @@ def test_neo_edges ( neo_driver: neo4j.Driver, genes_csv: pd.DataFrame ) -> None
 			( "hasAccession", "Gene", "Accession", n_expected_genes ),
 			( "hasAccession", "Protein", "Accession", n_expected_proteins )
 		]:
-			qry = f"MATCH (n:{from_label}) - [r:{rel_type}] -> (m:{to_label}) RETURN COUNT(r) AS n"
+			qry = f"MATCH (n:{from_label}) - [r:{rel_type}] -> (m:{to_label}) WHERE n.`ketl:source` = '{KETL_SOURCE}' RETURN COUNT(r) AS n"
 			result = session.run ( qry ).single ()
 			n_rels = result["n"]
 			assert_that ( n_rels, f"Number of {rel_type} relationships in Neo4j is correct" )\

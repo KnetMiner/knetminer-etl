@@ -4,9 +4,9 @@
 ## Real Use cases
 
 Next steps for the KnetMiner base pipeline:
-1. [ ] Publish the new ETL to pypi
-1. [ ] Create a new project knetminer-schema-etl in knetminer-schemas, which offers helpers for generic KnetMiner mappings (applicable to similar datasets). Extends knetminer-etl.
-1. [ ] Create a new knetminer-pilot-etl project, which extends knetminer-schema-etl and implements the real use case.
+1. [ ] Publish the new ETL to pypi?
+1. [X] Create mappings module.
+1. [ ] Create a new knetminer-pilot-etl project, which depends on knetminer-etl and implements the real use case.
   1. [ ] I don't know if there should be one repo per dataset, or one giant repo for all datasets. To be discussed.
 
 ## General
