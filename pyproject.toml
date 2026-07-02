@@ -3,7 +3,7 @@ name = "knetminer-etl"
 version = "1.0.0"
 description = "KnetMiner ETL tools for Knowledge Graph building"
 authors = [
-    {name = "Marco Brandizi",email = "marco.brandizi@gmail.com"}
+    {name = "Marco Brandizi", email = "marco@knetminer.com"}
 ]
 readme = "README.md"
 # Brandizi: I mostly develop with 3.14, but we need compatibility with other contexts, eg, 
