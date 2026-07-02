@@ -203,6 +203,15 @@ class SparkDataFrameMapperBase:
 	def map ( self, df: DataFrame ) -> DataFrame:
 		pass
 
+	def to_tab_file_mapper ( self, spark_options: Dict[str, Any] | None = None ) -> "GenericTabFileMapper":
+		"""
+		Helper to build a :class:`ketl.tabmap.GenericTabFileMapper` from this Spark DataFrame mapper.
+		"""
+		return GenericTabFileMapper ( 
+			data_frame_mapper = self,
+			spark_options = spark_options
+		)
+
 
 class SparkDataFrameMapper ( SparkDataFrameMapperBase ):
 	"""
@@ -390,15 +399,35 @@ class SparkDataFrameMapper ( SparkDataFrameMapperBase ):
 		self._row_mappers = [ m for m in mappers if isinstance ( m, RowTripleMapper ) ] 
 		self._const_prop_mappers = [ m for m in mappers if isinstance ( m, ConstantTripleMapper ) ]
 
+	def to_tab_file_mapper ( self, spark_options: Dict[str, Any] | None = None ) -> "TabFileMapper":
+		"""
+		Override of :meth:`SparkDataFrameMapperBase.to_tab_file_mapper`, to return the more specific type
+		:class:`ketl.tabmap.TabFileMapper`.
+		"""
+		return TabFileMapper ( 
+			id_mapper = self.id_mapper,
+			mapper_components = self.mapper_components,
+			spark_options = spark_options
+		)
+
 # /SparkDataFrameMapper
 
 
-class TabFileMapper:
+class GenericTabFileMapper:
 	"""
 	A tabular file mapper.
 
 	Maps files like TSV/CSV into a data frame of :class:`ketl.GraphTriple` rows, 
-	by using :class:`ketl.tabmap.SparkDataFrameMapper`.
+	by using :class:`ketl.tabmap.SparkDataFrameMapperBase`.
+
+	Most of the times, you'll be using :class:`ketl.tabmap.TabFileMapper`, which is a subclass 
+	of this one that creates and uses a :class:`ketl.tabmap.SparkDataFrameMapper` to do the job, 
+	ie, it's based on mapping a file to a single node or edge type.
+
+	In contrast, this class is more generic and can be used to wrap data frame mappers like
+	the one obtained from chaining multiple :class:`ketl.tabmap.SparkDataFrameMapper` 
+	(see the `helpers` module) 
+
 	"""
 
 	DEFAULT_SPARK_OPTIONS = {
@@ -407,43 +436,37 @@ class TabFileMapper:
 		"inferSchema": True,
 		"comment": "#"
 	}
-	
-	def __init__ ( 
+
+	def __init__ (
 		self,
-
-		id_mapper: RowValueMapper | SparkDataFrameMapper.AutoEdgeId | None, 
-		mapper_components: list[ RowTripleMapper|ConstantTripleMapper ] | None,
-
+		data_frame_mapper: SparkDataFrameMapperBase,
 		spark_options: Dict[str, Any] | None = None,
 	):
 		"""
-		TODO: we don't support files without headers. While we plan to do it at some point, 
-		files like that are stupidly lazy, you shouldn't create them and if you get them 
-		from third parties, you should write your own scripts to fix them. For the time being, 
-		if you set "header" to False in `spark_options`, you'll get an error.
-
 		## Parameters:
 		 
-		- id_mapper, column_mappers, const_prop_mappers: passed to :class:`ketl.tabmap.SparkDataFrameMapper`, 
-		  to map the file columns to triples.
+		- data_frame_mapper: a :class:`ketl.tabmap.SparkDataFrameMapperBase` that does the job of mapping
+			the input data frame into a data frame of triples.
 
 		- spark_options: options passed to :meth:`SparkSession.read.options`. If null, we use 
 			:attr:`DEFAULT_SPARK_OPTIONS`. If specified, it will override those defaults.
 
-			
 		## Attributes:
 
 		- `data_frame_types`: when set with a :class:`ketl.SparkDataFrameTypes`, it uses the 
 		defined col -> spec mappings to deal with the data frame that is loaded from the file. As said
 		elsewhere, at the moment we use this to allow for casting the input columns into desired types. 
 		**WARNING**: this is only applied if the 'inferSchema' option is set to False.
-		"""
 
-		self.data_frame_mapper = SparkDataFrameMapper ( 
-			id_mapper, mapper_components
-		)
+		TODO: we don't support files without headers. While we plan to do it at some point, 
+		files like that are stupidly lazy, you shouldn't create them and if you get them 
+		from third parties, you should write your own scripts to fix them. For the time being, 
+		if you set "header" to False in `spark_options`, you'll get an error.
+		"""
+		self.data_frame_mapper = data_frame_mapper
 		self.spark_options = spark_options
 		self.spark_data_frame_types: SparkDataFrameTypes | None = None
+
 
 	def map ( self, spark: SparkSession, file_path: str, out_path: str | None = None ) -> DataFrame:
 		"""
@@ -453,7 +476,7 @@ class TabFileMapper:
 
 		## Parameters:
 
-		- spark: it needs a Spark session to work with. TODO: an session initialiser to be use in workflow
+		- spark: it needs a Spark session to work with. TODO: a session initialiser to be use in workflow
 		  descriptors such as Snakefiles.
 
 		- file_path: the path to the input tabular file (CSV/TSV).
@@ -465,7 +488,7 @@ class TabFileMapper:
 
 		# Fix the options, override defaults if requested
 		#
-		opts = TabFileMapper.DEFAULT_SPARK_OPTIONS.copy ()
+		opts = GenericTabFileMapper.DEFAULT_SPARK_OPTIONS.copy ()
 		if self.spark_options:
 			opts.update ( self.spark_options )
 		
@@ -496,6 +519,42 @@ class TabFileMapper:
 		
 		return triple_df
 	# /map
+
+# /GenericTabFileMapper
+
+
+class TabFileMapper (GenericTabFileMapper):
+	"""
+	A tabular file mapper based on :class:`ketl.tabmap.SparkDataFrameMapper`.
+
+	This is an extension of :class:`ketl.tabmap.GenericTabFileMapper` that creates and uses 
+	a :class:`ketl.tabmap.SparkDataFrameMapper`, assuming you're mapping to a single node or edge type.
+
+	As said above, this is the most common case.
+	"""
+
+	def __init__ ( 
+		self,
+
+		id_mapper: RowValueMapper | SparkDataFrameMapper.AutoEdgeId | None, 
+		mapper_components: list[ RowTripleMapper|ConstantTripleMapper ] | None,
+
+		spark_options: Dict[str, Any] | None = None,
+	):
+		"""
+		## Parameters:
+		 
+		- id_mapper, mapper_components: passed to :class:`ketl.tabmap.SparkDataFrameMapper`, 
+		  to map the file columns to triples.
+
+		- spark_options: see the :class:`ketl.tabmap.GenericTabFileMapper` constructor.
+			
+		"""
+
+		self.data_frame_mapper = SparkDataFrameMapper ( 
+			id_mapper, mapper_components
+		)
+		super().__init__ ( self.data_frame_mapper, spark_options )
 
 	@property
 	def id_mapper ( self ) -> RowValueMapper:

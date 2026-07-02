@@ -16,7 +16,7 @@ import ketl.tabmap.helpers as tbhelpers
 from ketl.core import (ConstantTripleMapper, GraphTriple,
                        JSONBasedValueConverter, SparkDataFrameTypes)
 from ketl.spark.utils import assertDataFrameEqualX
-from ketl.tabmap.core import (ColumnTripleMapper, ColumnValueMapper,
+from ketl.tabmap.core import (ColumnTripleMapper, ColumnValueMapper, GenericTabFileMapper,
                               SparkDataFrameMapper, TabFileMapper)
 
 log = logging.getLogger ( __name__ )
@@ -482,7 +482,22 @@ class TestSparkDataFrameMapper:
 		assert_that ( set ( mapped_triples ), "Mapped triples are as expected" )\
 			.is_equal_to ( set ( expected_triples ) )
 	# /test_auto_edge_id
+
+	def test_to_tab_file_mapper ( self ):
+		df_mapper = SparkDataFrameMapper (
+			id_mapper = ColumnValueMapper ( "id" ),
+			mapper_components = [
+				ColumnTripleMapper ( "name", "hasName" ),
+				ColumnTripleMapper ( "age" )
+			]
+		)
+		tab_mapper = df_mapper.to_tab_file_mapper ()
+		assert_that ( tab_mapper, "to_tab_file_mapper() returns a TabFileMapper" ).is_instance_of ( GenericTabFileMapper )
+		assert_that ( tab_mapper.id_mapper, "TabFileMapper has the same id_mapper" ).is_equal_to ( df_mapper.id_mapper )
+		assert_that ( tab_mapper.mapper_components, "TabFileMapper has the same mapper_components" )\
+			.is_equal_to ( df_mapper.mapper_components )
 # /TestSparkDataFrameMapper
+
 
 @pytest.mark.integration
 @pytest.mark.usefixtures ( "spark_session" )
