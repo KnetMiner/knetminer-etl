@@ -118,6 +118,13 @@ class TestConstantPropertyMapper:
 		assert_that ( triple.id, "Triple ID is as expected" ).is_equal_to ( triple_id )
 		assert_that ( triple.key, "Triple key is as expected" ).is_equal_to ( GraphTriple.TYPE_KEY )
 		assert_that ( triple.value, "Triple value is as expected" ).is_equal_to ( type_label )
+
+	def test_type_triple_mapper_cache ( self ):
+		type_label = "TestType"
+		const_mapper1 = khelpers.type_triple_mapper ( type_label )
+		const_mapper2 = khelpers.type_triple_mapper ( type_label )
+
+		assert_that ( const_mapper1, "type_triple_mapper(), the caching works" ).is_equal_to ( const_mapper2 )
 # /TestConstantPropertyMapper
 
 

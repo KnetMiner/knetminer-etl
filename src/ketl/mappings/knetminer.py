@@ -2,8 +2,11 @@
 Mappers and helpers for common types used in KnetMiner.
 """
 
+from ketl.core import ConstantTripleMapper
 from ketl.tabmap.core import ColumnValueMapper, RowTripleMapper, RowValueMapper, SparkDataFrameMapper, SparkDataFrameMapperBase
 import ketl.tabmap.helpers as tbhelpers
+
+from functools import cache
 
 def create_accession_tabmapper (
 	acc_source_mapper: str|RowValueMapper, acc_mapper: str|RowValueMapper
@@ -50,6 +53,20 @@ def create_accession_tabmapper (
 		return f"{acc_source}:{acc}"
 
 	return tbhelpers.row_triple_mapper ( acc_extractor, "accessions" )
+
+
+@cache
+def data_source_triple_mapper ( data_source: str ) -> ConstantTripleMapper:
+	"""
+	Creates a property triple mapper that creates the dataSource property for a node, ie, 
+	something like: `$nodeId dataSources "ENSEMBL"`
+
+	Returned values are cached.
+
+	TODO: introduce this in tests and examples.
+
+	"""
+	return ConstantTripleMapper ( property = "dataSources", constant_value = data_source )
 
 
 # TODO: remove, it's the old version that creates a separated node

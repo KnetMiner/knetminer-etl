@@ -4,7 +4,7 @@ from assertpy import assert_that
 from pyspark.sql import SparkSession
 import pytest
 
-from ketl.core import GraphProperty, GraphTriple, PGElementType, ValueConverter
+from ketl.core import ConstantTripleMapper, GraphProperty, GraphTriple, PGElementType, ValueConverter
 from ketl.io.core import pg_df_2_pg_jsonl, triples_2_pg_df
 from ketl.tabmap.core import ColumnTripleMapper, ColumnValueMapper, SparkDataFrameMapper
 
@@ -215,5 +215,23 @@ def test_add_accession_tabmapper_multiple_accessions ( spark_session: SparkSessi
 
 	assert_that ( pg_jsonl, "PG node is as expected" )\
 		.contains ( expected_pg_node )
-	
-	
+
+
+def test_data_source_triple_mapper ():
+	data_source = "ENSEMBL"
+	mapper = knetmaps.data_source_triple_mapper ( data_source )
+	# TODO: add equivalence magic methods.
+	assert_that ( mapper, "data_source_triple_mapper() returns a ConstantTripleMapper" )\
+		.is_instance_of ( ConstantTripleMapper )
+	assert_that ( mapper.constant_value, "ConstantTripleMapper has the expected constant value" )\
+		.is_equal_to ( data_source )
+	assert_that ( mapper.property, "ConstantTripleMapper has the expected property" )\
+		.is_equal_to ( "dataSources" )
+
+
+def test_data_source_triple_mapper_cache ():
+	data_source = "ENSEMBL"
+	mapper1 = knetmaps.data_source_triple_mapper ( data_source )
+	mapper2 = knetmaps.data_source_triple_mapper ( data_source )
+	assert_that ( mapper1, "data_source_triple_mapper(), caching works" )\
+		.is_same_as ( mapper2 )
