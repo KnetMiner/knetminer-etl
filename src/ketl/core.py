@@ -60,8 +60,17 @@ class GraphTriple ( GraphProperty ):
 	"""
 
 	ID_KEY = "id"
+	"""
+	**WARNING**: this is **deprecated**, just use 'id'. This was intended to be used as the name
+	of the final KG property to be used as logical identifier.
+
+	TODO: we ain't even using this in the Neoloader, introduce it there as an option.
+	"""
 
 	DATAFRAME_SCHEMA_LIST = [ ID_KEY, "key", "value" ]
+	"""
+	The list of columns usually used in a Spark or Pandas DataFrame to represent a list of triples.
+	"""
 
 	id: str
 

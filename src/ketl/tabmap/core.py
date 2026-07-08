@@ -299,7 +299,7 @@ class SparkDataFrameMapper ( SparkDataFrameMapperBase ):
 
 
 	def map ( self, df: DataFrame ) -> DataFrame:
-		def map_pandas_batches ( pdf_iter: Iterator [ pd.DataFrame ] ) -> Iterator [ pd.DataFrame ]:
+		def map_pandas_batch ( pdf_iter: Iterator [ pd.DataFrame ] ) -> Iterator [ pd.DataFrame ]:
 			"""
 			Maps batches of Pandas data frames (coming from the original DF) into batches of 
 			Pandas DF triples, using the mapper's mapping components.
@@ -316,7 +316,7 @@ class SparkDataFrameMapper ( SparkDataFrameMapperBase ):
 			corresponding to :class:`ketl.GraphTriple`, one row per property.
 			"""
 			for pdf in pdf_iter:
-				mapped_rows = [] # id, key, value
+				triple_rows = []
 
 				for selected_row in pdf.itertuples ( index = False, name = None ):
 					row_dict = {
@@ -333,19 +333,19 @@ class SparkDataFrameMapper ( SparkDataFrameMapperBase ):
 
 						for row_mapper in self._row_mappers:
 							triple = row_mapper.triple ( triple_id, row_dict, khelper.converter_if_needed ( row_mapper ) )
-							if triple is None: continue
-							mapped_rows.append ( [ triple_id, triple.key, triple.value ] )
+							if triple is not None:
+								triple_rows.append ( [ triple_id, triple.key, triple.value ] )
 
 						# And now the constants
 						for const_mapper in self._const_prop_mappers:
 							triple = const_mapper.triple ( triple_id, khelper.converter_if_needed ( const_mapper ) )
-							if triple is None: continue
-							mapped_rows.append ( [ triple_id, triple.key, triple.value ] )
+							if triple is not None:
+								triple_rows.append ( [ triple_id, triple.key, triple.value ] )
 
 					except Exception as ex:
 						raise RuntimeError ( f"Error: {ex} while mapping the row: {row_dict}" ) from ex
 
-				yield pd.DataFrame ( mapped_rows, columns = [ "id", "key", "value" ] )
+				yield pd.DataFrame ( triple_rows, columns = GraphTriple.DATAFRAME_SCHEMA_LIST )
 
 
 		### The body
@@ -361,7 +361,7 @@ class SparkDataFrameMapper ( SparkDataFrameMapperBase ):
 			])
 
 			selected_df = df.select ( *self._row_mapper_keys )
-			out_df = selected_df.mapInPandas ( map_pandas_batches, schema = out_schema )
+			out_df = selected_df.mapInPandas ( map_pandas_batch, schema = out_schema )
 
 			return out_df
 
