@@ -301,11 +301,11 @@ class SparkDataFrameMapper ( SparkDataFrameMapperBase ):
 	def map ( self, df: DataFrame ) -> DataFrame:
 		def map_pandas_batches ( pdf_iter: Iterator [ pd.DataFrame ] ) -> Iterator [ pd.DataFrame ]:
 			"""
-			Internal function used with :meth:`pyspark.sql.DataFrame.mapInPandas`, to map batches of
-			Spark rows (as pandas data frames) into batches of :class:`ketl.GraphTriple` rows.
+			Maps batches of Pandas data frames (coming from the original DF) into batches of 
+			Pandas DF triples, using the mapper's mapping components.
 
-			This is a 1:N transformation (a single input row can yield zero or more triple rows), which
-			is what `mapInPandas` is for: it avoids the array-then-explode pattern that a plain (scalar)
+			This is a 1:N transformation (a single input row can yield zero or more triple rows), optimised
+			via `mapInPandas`, which avoids the array-then-explode pattern that a plain (scalar)
 			UDF would need, and moves data between the JVM and Python in Arrow-serialised batches, rather
 			than one pickled row at a time.
 
