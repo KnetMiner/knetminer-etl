@@ -307,6 +307,8 @@ class TestSparkDataFrameMapper:
 
 		expected_df = spark_session.createDataFrame ( expected_data, triples_df.schema )
 
+		# triples_df.show ( truncate = False, n = 1000 )
+
 		assert_that ( triples_df.count (), "Row count matches expected" ).is_equal_to ( expected_df.count () )
 		assertDataFrameEqualX ( 
 			triples_df, expected_df, ignoreColumnOrder = True, ignoreColumnType = False,

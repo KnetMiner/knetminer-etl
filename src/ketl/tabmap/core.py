@@ -4,11 +4,11 @@ Tabular/CSV mapping tools for KnetMiner ETLs
 
 import logging
 from abc import abstractmethod
-from typing import Any, Dict
+from typing import Any, Dict, Iterator
 
+import pandas as pd
 from pyspark.sql import DataFrame, SparkSession
-from pyspark.sql.functions import explode, udf
-from pyspark.sql.types import ArrayType, StringType, StructField, StructType
+from pyspark.sql.types import StringType, StructField, StructType
 
 import ketl.helpers as khelper
 from ketl.core import (ConstantTripleMapper, GraphTriple, PropertyMapperMixin,
@@ -299,43 +299,53 @@ class SparkDataFrameMapper ( SparkDataFrameMapperBase ):
 
 
 	def map ( self, df: DataFrame ) -> DataFrame:
-		def map_spark_row ( *selected_row ) -> list [ list [ str, str, str ] ]:
+		def map_pandas_batches ( pdf_iter: Iterator [ pd.DataFrame ] ) -> Iterator [ pd.DataFrame ]:
 			"""
-			Internal UDF to map a Spark row into a list of :class:`ketl.GraphTriple` (equivalents).
+			Internal function used with :meth:`pyspark.sql.DataFrame.mapInPandas`, to map batches of
+			Spark rows (as pandas data frames) into batches of :class:`ketl.GraphTriple` rows.
 
-			@param selected_cols: list of DF columns from the DF, where the elements reflect the keys
-			in column_mappers.
+			This is a 1:N transformation (a single input row can yield zero or more triple rows), which
+			is what `mapInPandas` is for: it avoids the array-then-explode pattern that a plain (scalar)
+			UDF would need, and moves data between the JVM and Python in Arrow-serialised batches, rather
+			than one pickled row at a time.
 
-			@return: a list of 3-element lists, corresponding to :class:`ketl.GraphTriple`, one row per 
-			property.
+			@param pdf_iter: an iterator of pandas data frames, each one a batch of input rows, with
+			columns corresponding to `self._row_mapper_keys`.
 
-			TODO: probably the performance is not optimal, try Pandas UDFs or Python UDTFs.
+			@return: an iterator of pandas data frames, each with columns `id`, `key`, `value`,
+			corresponding to :class:`ketl.GraphTriple`, one row per property.
 			"""
-			row_dict = dict ( zip ( self._row_mapper_keys, selected_row ) )
-			log.debug ( f"map_spark_row() row_dict: {row_dict}" )
+			for pdf in pdf_iter:
+				mapped_rows = [] # id, key, value
 
-			try:
-				# The node or relationship ID
-				triple_id = self.id_mapper.value ( row_dict )
+				for selected_row in pdf.itertuples ( index = False, name = None ):
+					row_dict = {
+						k: ( None if pd.isna ( v ) else v )
+						for k, v in zip ( self._row_mapper_keys, selected_row )
+					}
+					log.debug ( f"map_pandas_batches() row_dict: {row_dict}" )
 
-				if not triple_id: return []
+					try:
+						# The node or relationship ID
+						triple_id = self.id_mapper.value ( row_dict )
 
-				mapped_row = [] # id, key, value
-				for row_mapper in self._row_mappers:
-					triple = row_mapper.triple ( triple_id, row_dict, khelper.converter_if_needed ( row_mapper ) )
-					if triple is None: continue
-					mapped_row.append ( [ triple_id, triple.key, triple.value ] )
+						if not triple_id: continue
 
-				# And now the constants
-				for const_mapper in self._const_prop_mappers:
-					triple = const_mapper.triple ( triple_id, khelper.converter_if_needed ( const_mapper ) )
-					if triple is None: continue
-					mapped_row.append ( [ triple_id, triple.key, triple.value ] )
+						for row_mapper in self._row_mappers:
+							triple = row_mapper.triple ( triple_id, row_dict, khelper.converter_if_needed ( row_mapper ) )
+							if triple is None: continue
+							mapped_rows.append ( [ triple_id, triple.key, triple.value ] )
 
-				return mapped_row
-			
-			except Exception as ex:
-				raise RuntimeError ( f"Error: {ex} while mapping the row: {row_dict}" ) from ex
+						# And now the constants
+						for const_mapper in self._const_prop_mappers:
+							triple = const_mapper.triple ( triple_id, khelper.converter_if_needed ( const_mapper ) )
+							if triple is None: continue
+							mapped_rows.append ( [ triple_id, triple.key, triple.value ] )
+
+					except Exception as ex:
+						raise RuntimeError ( f"Error: {ex} while mapping the row: {row_dict}" ) from ex
+
+				yield pd.DataFrame ( mapped_rows, columns = [ "id", "key", "value" ] )
 
 
 		### The body
@@ -344,25 +354,17 @@ class SparkDataFrameMapper ( SparkDataFrameMapperBase ):
 		try:
 			self._init_row_mapper_keys ( df )
 
-			out_schema = ArrayType (
-				StructType ([
-					StructField ( "id", StringType(), False ),
-					StructField ( "key", StringType(), False ),
-					StructField ( "value", StringType(), True )
-				])
-			)
+			out_schema = StructType ([
+				StructField ( "id", StringType(), False ),
+				StructField ( "key", StringType(), False ),
+				StructField ( "value", StringType(), True )
+			])
 
-			# As per Spark documentation.
-			map_spark_row_udf = udf ( map_spark_row, out_schema )
-			selected_cols = [ df [ col ] for col in self._row_mapper_keys ]
-
-			out_df = df.withColumn ( "triples", map_spark_row_udf ( *selected_cols ) ) \
-				.select ( explode ( "triples" ).alias ( "triple" ) ) \
-				.select ( f"triple.id", "triple.key", "triple.value" ) 
-				# Explode the 'triplet' struct into its columns
+			selected_df = df.select ( *self._row_mapper_keys )
+			out_df = selected_df.mapInPandas ( map_pandas_batches, schema = out_schema )
 
 			return out_df
-		
+
 		except Exception as ex:
 			raise RuntimeError ( f"Error: {ex} while mapping with the mapper '{self.mapper_name}'" ) from ex
 
