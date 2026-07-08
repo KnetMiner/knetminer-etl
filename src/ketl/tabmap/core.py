@@ -198,10 +198,24 @@ class SparkDataFrameMapperBase:
 	"""
 	Base class to define the essential elements in a mapper that maps a :class:`pyspark.sql.DataFrame` 
 	into another mapper, consisting of a set of :class:`ketl.GraphTriple` rows.
+
+	## Attributes
+	- `mapper_name`: a name for this mapper, used in logging and error messages. Defaults to the class name.
 	"""
+
+	def __init__ ( self ):
+		self.mapper_name = self.__class__.__name__
+		
 	@abstractmethod
 	def map ( self, df: DataFrame ) -> DataFrame:
 		pass
+
+	def with_mapper_name ( self, mapper_name: str ) -> "SparkDataFrameMapperBase":
+		"""
+		Fluent style setter for the mapper name. This is used in logging and error messages.
+		"""
+		self.mapper_name = mapper_name
+		return self
 
 	def to_tab_file_mapper ( self, spark_options: Dict[str, Any] | None = None ) -> "GenericTabFileMapper":
 		"""
@@ -255,6 +269,9 @@ class SparkDataFrameMapper ( SparkDataFrameMapperBase ):
 		result. This constructor creates `row_mappers` and `const_prop_mappers` from this list, to be used internally
 		and as a convenience to the outside.
 		"""
+
+		super().__init__ ()
+
 		self.id_mapper = id_mapper
 
 		# Let's setup the mappers
@@ -291,53 +308,63 @@ class SparkDataFrameMapper ( SparkDataFrameMapperBase ):
 
 			@return: a list of 3-element lists, corresponding to :class:`ketl.GraphTriple`, one row per 
 			property.
+
+			TODO: probably the performance is not optimal, try Pandas UDFs or Python UDTFs.
 			"""
 			row_dict = dict ( zip ( self._row_mapper_keys, selected_row ) )
 			log.debug ( f"map_spark_row() row_dict: {row_dict}" )
 
-			# The node or relationship ID
-			triple_id = self.id_mapper.value ( row_dict )
+			try:
+				# The node or relationship ID
+				triple_id = self.id_mapper.value ( row_dict )
 
-			if not triple_id: return []
+				if not triple_id: return []
 
-			mapped_row = [] # id, key, value
-			for row_mapper in self._row_mappers:
-				triple = row_mapper.triple ( triple_id, row_dict, khelper.converter_if_needed ( row_mapper ) )
-				if triple is None: continue
-				mapped_row.append ( [ triple_id, triple.key, triple.value ] )
+				mapped_row = [] # id, key, value
+				for row_mapper in self._row_mappers:
+					triple = row_mapper.triple ( triple_id, row_dict, khelper.converter_if_needed ( row_mapper ) )
+					if triple is None: continue
+					mapped_row.append ( [ triple_id, triple.key, triple.value ] )
 
-			# And now the constants
-			for const_mapper in self._const_prop_mappers:
-				triple = const_mapper.triple ( triple_id, khelper.converter_if_needed ( const_mapper ) )
-				if triple is None: continue
-				mapped_row.append ( [ triple_id, triple.key, triple.value ] )
+				# And now the constants
+				for const_mapper in self._const_prop_mappers:
+					triple = const_mapper.triple ( triple_id, khelper.converter_if_needed ( const_mapper ) )
+					if triple is None: continue
+					mapped_row.append ( [ triple_id, triple.key, triple.value ] )
 
-			return mapped_row
+				return mapped_row
+			
+			except Exception as ex:
+				raise RuntimeError ( f"Error: {ex} while mapping the row: {row_dict}" ) from ex
 
 
 		### The body
 		#
 
-		self._init_row_mapper_keys ( df )
+		try:
+			self._init_row_mapper_keys ( df )
 
-		out_schema = ArrayType (
-			StructType ([
-				StructField ( "id", StringType(), False ),
-				StructField ( "key", StringType(), False ),
-				StructField ( "value", StringType(), True )
-			])
-		)
+			out_schema = ArrayType (
+				StructType ([
+					StructField ( "id", StringType(), False ),
+					StructField ( "key", StringType(), False ),
+					StructField ( "value", StringType(), True )
+				])
+			)
 
-		# As per Spark documentation.
-		map_spark_row_udf = udf ( map_spark_row, out_schema )
-		selected_cols = [ df [ col ] for col in self._row_mapper_keys ]
+			# As per Spark documentation.
+			map_spark_row_udf = udf ( map_spark_row, out_schema )
+			selected_cols = [ df [ col ] for col in self._row_mapper_keys ]
 
-		out_df = df.withColumn ( "triples", map_spark_row_udf ( *selected_cols ) ) \
-		  .select ( explode ( "triples" ).alias ( "triple" ) ) \
-			.select ( f"triple.id", "triple.key", "triple.value" ) 
-		  # Explode the 'triplet' struct into its columns
+			out_df = df.withColumn ( "triples", map_spark_row_udf ( *selected_cols ) ) \
+				.select ( explode ( "triples" ).alias ( "triple" ) ) \
+				.select ( f"triple.id", "triple.key", "triple.value" ) 
+				# Explode the 'triplet' struct into its columns
 
-		return out_df
+			return out_df
+		
+		except Exception as ex:
+			raise RuntimeError ( f"Error: {ex} while mapping with the mapper '{self.mapper_name}'" ) from ex
 
 
 	def with_use_column_ids ( self, use_column_ids: bool = True ) -> "SparkDataFrameMapper":

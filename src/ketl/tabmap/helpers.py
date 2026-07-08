@@ -165,10 +165,14 @@ def edge_auto_id_row_value_mapper (
 
 def edge_id ( type_id: str, from_id: str, to_id: str ) -> str:
 	"""
-	Simple helper to build a common edge ID from a composite key, eg, `encodesProtein:GENE001-PROTEIN001`. 
+	Simple helper to build a common edge ID from a composite key, eg, `encodesProtein:GENE001-PROTEIN001`.
+	
+	TODO: add an option to skip rows with empty endpoints.
 	"""
 	if not ( type_id and from_id and to_id ):
-		raise ValueError ( f"Cannot build edge ID from empty type/from/to IDs" )
+		raise ValueError ( 
+			f"Cannot build edge ID from empty type/from/to IDs (tuple: \"{type_id}\", \"{from_id}\", \"{to_id}\")"
+		)
 	return f"{type_id}:{from_id}-{to_id}"
 
 
