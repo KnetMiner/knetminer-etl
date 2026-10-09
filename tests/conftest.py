@@ -25,6 +25,15 @@ def pytest_configure ( config ):
 	cfg_path = os.path.dirname ( __file__ ) + "/resources/logging-test.yml"
 	logger_config ( __name__, cfg_path = cfg_path )
 
+	brandiz_jdk_home = "/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home"
+	# if this exists, we're on my laptop and we need to pass it to JAVA_HOME, since my
+	# 25 default doesn't work with Spark as yet. When running stuff from CLI, I do this manually,
+	# but that's harder to do with VSCode and its components
+	# TODO: remove when possible.
+	if os.path.exists ( brandiz_jdk_home ):
+		os.environ [ "JAVA_HOME" ] = brandiz_jdk_home
+		logging.getLogger ( __name__ ).info ( f"Set JAVA_HOME to {brandiz_jdk_home}" )
+
 
 @pytest.fixture ( name = "spark_session", scope = "session" )
 def create_spark_session_fixture () -> Generator[ SparkSession, None, None ]:
