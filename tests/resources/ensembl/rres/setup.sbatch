@@ -71,7 +71,7 @@ if $do_neo; then
 fi
 
 if $do_spark; then
-	printf "\n|== Starting the Spark\n"
+	printf "\n|== Starting the Spark cluster\n"
 	kslurm-spark-start.sh --track "$SPARK_TRACK_PATH" \
 	  --sbatch "$KETL_SBATCH_OPTS --output=$WF_HOME/spark-server.out --error=$WF_HOME/spark-server.out"
 fi

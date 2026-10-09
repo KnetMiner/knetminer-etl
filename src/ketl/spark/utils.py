@@ -271,6 +271,9 @@ def df_union_all_by_name (
 	DFs by their column names.
 	
 	This is typically used to concatenate dataframes with the same or similar schemas.
+	In particular, in KnetMiner ETL, it's useful to join DataFrames of 
+	:class:`ketl.core.GraphTriple` rows, before converting the result to PG/JSONL format,
+	using :func:`ketl.io.core.triples_2_pg_df`.
 
 	If any of the inputs is a path, it is intended as a `.parquet` file path and passed 
 	to :func:`df_load` to load the corresponding DataFrame. If that's the case, 

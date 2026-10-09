@@ -91,6 +91,7 @@ class NeoLoaderPropertyConfig:
 		"""
 
 	multi_value_mode: MultiValueMode = MultiValueMode.AUTO
+	
 	@classmethod
 	def from_config ( cls, config: dict ) -> "NeoLoaderPropertyConfig":
 		"""

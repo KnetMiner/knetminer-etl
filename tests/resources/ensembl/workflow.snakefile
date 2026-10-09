@@ -53,10 +53,11 @@ rule neo_loader:
 	"""
 	Loads the final JSONL file into Neo4j, using the NeoLoader.
 
-	This loads nodes and edges with 2 separate rule instantiations, triggered by 
-	the wildcard expansion in all.
-	"""
-	
+	The NeoLoader (`pg_jsonl_neo_loader()`) automatically handles the incremental loading 
+	of the nodes first (if needed, tracked by a `done.nodes` file) and then the edges
+	(tracked by the `done.edges` file given here, which also deals with this rule 
+	incrementally).
+	"""	
 	input:
 		f"{KETL_OUT}/knowledge-graph.json"
 	output:
@@ -81,7 +82,8 @@ rule triples_2_json_pg:
 	parquet files, using triples_2_pg_df() and df_save().
 	"""
 	input:
-		# The PG builder needs to distinguish between nodes and edges, see below
+		# You don't need to separate them, df_union_all_by_name() below could just take
+		# `*input`. Here, we split them this way just for clarity.
 		nodes = [
 			df_check_path ( f"{KETL_TMP}/gene-triples.parquet" ),
 			df_check_path ( f"{KETL_TMP}/gene-accession-triples.parquet" ),

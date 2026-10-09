@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+
+# Runs an ETL command within the RRes environment
+#
+
 set -euo pipefail
 
 cmds="setup|run|teardown"

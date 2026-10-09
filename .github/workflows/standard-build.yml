@@ -15,18 +15,22 @@ on:
       #
       NEW_RELEASE_VER:
         description: "New Release Version"
+        type: string
         required: false
       NEW_SNAPSHOT_VER:
         description: "New Snapshot Version"
+        type: string
         required: false
       IS_LATEST_RELEASE:
         description: "When releasing, tells if it's a github latest release. Ignored otherwise."
+        type: boolean
+        default: true
         required: false
-        default: "true"
       IS_PRE_RELEASE:
         description: "When releasing, tells if it's a github pre-release. Ignored otherwise."
+        type: boolean
+        default: false
         required: false
-        default: "false"
 
 permissions:
   # needed to push and when the repo belongs to an organisation.
