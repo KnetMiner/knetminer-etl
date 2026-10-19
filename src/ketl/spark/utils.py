@@ -10,6 +10,11 @@ These functions are purposefully abstract, all a client needs to know is that th
 to a DF identifies the data and can be used to reload it later.
 
 Internally, we perform Spark-specific optimisations, which are kept transparent to the client.
+
+
+## The `assertDataFrameXXX()` functions
+
+These are helpers to facilitate tests against Spark data frames.
 """
 
 import functools

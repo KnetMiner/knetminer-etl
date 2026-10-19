@@ -94,8 +94,10 @@ function cleanup()
   # Since we have seen workers complaining that they can't connect the master, we take down them
   # first
   #
-  echo "|== Terminating the workers"
-  scancel --batch --signal TERM $worker_job_ids || true
+  if [[ "$worker_nodes" -gt 1 ]]; then
+    echo "|== Terminating the workers"
+    scancel --batch --signal TERM $worker_job_ids || true
+  fi
 
   # Wait for them to stop
   timeout "$SPARK_STOP_TIMEOUT" bash -c "while squeue --jobs $worker_job_ids &>/dev/null; do sleep 1; done"

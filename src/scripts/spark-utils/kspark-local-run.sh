@@ -19,10 +19,10 @@ Start a Spark cluster on the local host, to be used for tests and alike.
 
 Options:
 
-  --workers <n>.    Number of workers, including the (default: $nworkers)
-  --cores <n>.    Cores per node (default: based on available ones)
-  --ram <n>.      RAM per node in GB (default: based on 16 GB total)
-  --help          Shows this help and exits with 2
+  --workers <n>    Number of workers, including the (default: $nworkers)
+  --cores <n>      Cores per node (default: based on available ones)
+  --ram <n>        RAM per node in GB (default: based on 16 GB total)
+  --help           Shows this help and exits with 2
 
 Environment variables:
 
