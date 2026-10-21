@@ -31,8 +31,7 @@ def df_join_filter (
 			raise ValueError ( "At least one column needs to be specified for joining" )
 		target_col = join_cols_or_expr [ 0 ]
 		ref_col = join_cols_or_expr [ 1 ] if len ( join_cols_or_expr ) == 2 else target_col
-		# left_semi == WHERE EXISTS: keeps target_df's rows/columns only, no duplicates
-		join_cols_or_expr = f"target.{target_col} = ref.{ref_col}"
+		join_cols_or_expr = f"target.`{target_col}` = ref.`{ref_col}`"
 		
 	# left_semi == WHERE EXISTS: keeps target_df's rows/columns only, no duplicates
 	return target_df.alias ( "target" ).join (
