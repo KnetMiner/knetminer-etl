@@ -141,7 +141,13 @@ def run_snakefile (
 		env = { **env, **custom_env }
 
 	subprocess.run ( 
-		[ "snakemake", "-s", snakefile_path, "--cores", "all", snake_target ], 
+		[ "snakemake", 
+		  "-s", snakefile_path,
+			"--cores", "all",
+			# Else, under macOS you'll end up with ARM-incompatible calls
+			# (https://github.com/snakemake/snakemake/issues/3007)
+			"--scheduler", "greedy",
+			snake_target ], 
 		check = True,
 		env = env
 	)
