@@ -3,7 +3,7 @@ Tabular/CSV mapping tools for KnetMiner ETLs
 """
 
 import logging
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 from typing import Any, Dict, Iterator
 
 import pandas as pd
@@ -194,7 +194,7 @@ class ColumnTripleMapper ( ColumnValueMapper, RowTripleMapper ):
 		self._init ( property if property else column_id )
 
 
-class SparkDataFrameMapperBase:
+class SparkDataFrameMapperBase ( ABC ):
 	"""
 	Base class to define the essential elements in a mapper that maps a :class:`pyspark.sql.DataFrame` 
 	into another mapper, consisting of a set of :class:`ketl.GraphTriple` rows.
@@ -487,6 +487,9 @@ class GenericTabFileMapper:
 		elsewhere, at the moment we use this to allow for casting the input columns into desired types. 
 		**WARNING**: this is only applied if the 'inferSchema' option is set to False.
 
+		`spark_options` and `data_frame_types` are used in the :meth:map method, to call
+		:fun:`df_load_from_tab_file`.
+
 		TODO: we don't support files without headers. While we plan to do it at some point, 
 		files like that are stupidly lazy, you shouldn't create them and if you get them 
 		from third parties, you should write your own scripts to fix them. For the time being, 
@@ -501,39 +504,20 @@ class GenericTabFileMapper:
 		"""
 		Does the job and returns a Spark data frame representing the mapped triples.
 
-		As said above, this is essentially a wrapper of :meth:`ketl.tabmap.SparkDataFrameMapper.map`.
+		As said above, this is essentially a wrapper of :meth:`ketl.tabmap.SparkDataFrameMapperBase.map`.
 
 		## Parameters:
 
-		- spark: it needs a Spark session to work with. TODO: a session initialiser to be use in workflow
-		  descriptors such as Snakefiles.
+		- spark: it needs a Spark session to work with. This is passed to :fun:`df_load_from_tab_file`. 
 
-		- file_path: the path to the input tabular file (CSV/TSV).
+		- file_path: the path to the input tabular file (CSV/TSV). Passed to :fun:`df_load_from_tab_file`.
 
 		- out_path: if given, the mapped data frame is saved (as parquet) using the checkpointing	functions 
 		  in `ketl.spark.utils`, as an intermediate that allows for building incremental workflows in Snakemake or
 			similar frameworks. 
 		"""
 
-		# Fix the options, override defaults if requested
-		#
-		opts = GenericTabFileMapper.DEFAULT_SPARK_OPTIONS.copy ()
-		if self.spark_options:
-			opts.update ( self.spark_options )
-		
-		if not opts.get ( "header", True ):
-			raise ValueError ( "TabFileMapper: doesn't support files without headers yet" )
-		
-		log.info ( f"Mapping tab file \"{file_path}\"" )
-		df = spark.read.options ( **opts ).csv ( file_path )
-
-		# Work out an explicit schema.
-		#
-		if not opts.get ( "inferSchema", True ):
-			if self.spark_data_frame_types:
-				log.info ( f"Casting the input file to the specified SparkDataFrameTypes" )
-				df = self.spark_data_frame_types.cast_df ( df )
-				log.debug ( f"Schema after casting: {df.schema}" )
+		df = df_load_from_tab_file ( spark, file_path, self.spark_options, self.spark_data_frame_types )
 
 		# And eventually do the mapping
 		triple_df = self.data_frame_mapper.map ( df )
@@ -617,3 +601,55 @@ class TabFileMapper (GenericTabFileMapper):
 		return self.data_frame_mapper.mapper_components
 		
 # /TabFileMapper
+
+
+def df_load_from_tab_file ( 
+	spark: SparkSession, 
+	file_path: str,
+	spark_options: Dict[str, Any] | None = None,
+	spark_data_frame_types: SparkDataFrameTypes | None = None	
+) -> DataFrame :
+	"""
+	Utility to load a tabular file into a Spark data frame.
+
+	This is a convenience wrapper of `spark.read.otions( ... ).csv( file_path )`.
+
+	## Parameters
+	- `spark`: the Spark session to use for the operation. TODO: a session initialiser to be used in workflow 
+	descriptors such as Snakefiles.
+	- `file_path`: the path to the tabular file to load (TSV or CSV)
+	- `spark_options`: options passed to :meth:`SparkSession.read.options`. If null, we use 
+		:attr:`DEFAULT_SPARK_OPTIONS`. If specified, it will override those defaults.
+	- `spark_data_frame_types`: information about column types, based on :class:`SparkDataFrameTypes`.
+
+	## Return	
+	The Spark DF corresponding to the file contents, which is based on `spark.read.csv(file_path)`.
+	According to Spark code, the happens lazily or eagerly, depending on the `inferSchema` options.
+
+	TODO: we don't support files without headers. While we plan to do it at some point, 
+	files like that are stupidly lazy, you shouldn't create them and if you get them 
+	from third parties, you should write your own scripts to fix them. For the time being, 
+	if you set "header" to False in `spark_options`, you'll get an error.
+	"""
+
+	# Fix the options, override defaults if requested
+	#
+	opts = GenericTabFileMapper.DEFAULT_SPARK_OPTIONS.copy ()
+	if spark_options:
+		opts.update ( spark_options )
+	
+	if not opts.get ( "header", True ):
+		raise ValueError ( "TabFileMapper: doesn't support files without headers yet" )
+	
+	log.info ( f"Mapping tab file \"{file_path}\"" )
+	result_df = spark.read.options ( **opts ).csv ( file_path )
+
+	# Work out an explicit schema.
+	#
+	if not opts.get ( "inferSchema", True ):
+		if spark_data_frame_types:
+			log.info ( f"Casting the input file to the specified SparkDataFrameTypes" )
+			result_df = spark_data_frame_types.cast_df ( result_df )
+			log.debug ( f"Schema after casting: {result_df.schema}" )
+
+	return result_df
