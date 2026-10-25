@@ -534,7 +534,10 @@ class TabFileLoader:
 	# /GenericTabFileMapper	
 # /TabFileLoader	
 
-
+TabFileLoader.DEFAULT = TabFileLoader ()
+"""
+The default instance for the tab loader
+"""
 
 class GenericTabFileMapper:
 	"""
