@@ -533,7 +533,7 @@ class TestTabFileMapper:
 
 		if not is_infer_schema:
 			# This is how you can customise the input if Spark doesn't get it (usually it does)
-			tb_mapper.spark_data_frame_types = SparkDataFrameTypes (
+			tb_mapper.tab_file_loader.spark_data_frame_types = SparkDataFrameTypes (
 				column_specs = {
 					"begin": SparkDataFrameTypes.ColumnSpec ( IntegerType () ),
 					"end": SparkDataFrameTypes.ColumnSpec ( IntegerType () )

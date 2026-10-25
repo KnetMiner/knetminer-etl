@@ -110,7 +110,7 @@ rule map_gene_tsv:
 			spark_options = { "inferSchema": False }
 		)
 		# This is reported to illustrate the feature, you shouldn't need it very often.
-		tb_mapper.spark_data_frame_types = SparkDataFrameTypes (
+		tb_mapper.tab_file_loader.spark_data_frame_types = SparkDataFrameTypes (
 			column_specs = {
 				"begin": SparkDataFrameTypes.ColumnSpec ( IntegerType () ),
 				"end": SparkDataFrameTypes.ColumnSpec ( IntegerType () )
