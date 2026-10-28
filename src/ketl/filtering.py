@@ -2,7 +2,7 @@ from typing import Sequence
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 
-def df_join_filter ( 
+def df_filter_unlinked_rows ( 
 	target_df: DataFrame, reference_df: DataFrame, join_cols_or_expr
 ) -> DataFrame:
 	"""

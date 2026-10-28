@@ -3,10 +3,10 @@ from assertpy import assert_that
 from pyspark.sql import SparkSession
 from pyspark.errors import AnalysisException
 
-from ketl.filtering import df_join_filter
+from ketl.filtering import df_filter_unlinked_rows
 
 @pytest.mark.integration
-def test_df_join_filter_base ( spark_session: SparkSession ):
+def test_df_filter_unlinked_rows ( spark_session: SparkSession ):
 	expected_gene_rows = [
 		( "G001", "Gene 1" ),
 		( "G002", "Gene 2" )		
@@ -33,7 +33,7 @@ def test_df_join_filter_base ( spark_session: SparkSession ):
 	)
 
 	# Filter genes without proteins
-	filtered_gene_df = df_join_filter ( 
+	filtered_gene_df = df_filter_unlinked_rows ( 
 		target_df = gene_df, reference_df = protein_df, join_cols_or_expr = ( "gene_id", )
 	)
 
@@ -47,7 +47,7 @@ def test_df_join_filter_base ( spark_session: SparkSession ):
 	
 
 @pytest.mark.integration
-def test_df_join_filter_expr ( spark_session: SparkSession ):
+def test_df_filter_unlinked_rows_expr ( spark_session: SparkSession ):
 	expected_gene_rows = [
 		( "G001", "Gene 1" ),
 		( "G002", "Gene 2" )		
@@ -71,7 +71,7 @@ def test_df_join_filter_expr ( spark_session: SparkSession ):
 		]
 	)
 
-	filtered_gene_df = df_join_filter ( 
+	filtered_gene_df = df_filter_unlinked_rows ( 
 		target_df = gene_df, reference_df = protein_df, 
 		join_cols_or_expr = "target.gene_id = ref.gene_id OR target.gene_name = ref.gene_name"
 	)
@@ -83,12 +83,12 @@ def test_df_join_filter_expr ( spark_session: SparkSession ):
 
 
 @pytest.mark.integration
-def test_df_join_filter_bad_expr ( spark_session: SparkSession ):
+def test_df_filter_unlinked_rows_bad_expr ( spark_session: SparkSession ):
 	gene_df = spark_session.createDataFrame ( schema = [ "gene_id" ], data = [ ( "G001", ) ] )
 	protein_df = spark_session.createDataFrame ( schema = [ "gene_id" ], data = [ ( "G001", ) ] )
 
 	with pytest.raises ( AnalysisException ):
-		df_join_filter ( 
+		df_filter_unlinked_rows ( 
 			target_df = gene_df, reference_df = protein_df, 
 			join_cols_or_expr = "target.gene_id = ref.foo_id"
 		).collect ()
