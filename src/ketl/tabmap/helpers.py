@@ -193,7 +193,7 @@ def df_mappers_chain ( *df_mappers: SparkDataFrameMapperBase ) -> SparkDataFrame
 		def __init__ ( self, mappers: list[SparkDataFrameMapperBase] ):
 			self.mappers = mappers
 
-		def map ( self, df: SparkDataFrameMapperBase ) -> SparkDataFrameMapperBase:
+		def _map ( self, df: SparkDataFrameMapperBase ) -> SparkDataFrameMapperBase:
 			df_out = None
 			for mapper in self.mappers:
 				this_df_out = mapper.map ( df )

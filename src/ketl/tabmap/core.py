@@ -207,8 +207,31 @@ class SparkDataFrameMapperBase ( ABC ):
 		self.mapper_name = self.__class__.__name__
 		
 	@abstractmethod
-	def map ( self, df: DataFrame ) -> DataFrame:
+	def _map ( self, df: DataFrame ) -> DataFrame:
+		"""
+		Template method to do the mapping to triples. The public interface for this is 
+		:meth:`map`.
+		"""
 		pass
+
+	def map ( self, df: DataFrame, out_path: str | None = None ) -> DataFrame:
+		"""
+		This defaults calls :meth:`_map` and then, if `out_path` isn't void, it saves whatever results 
+		came from the mapping into the specified file. The latter calls :func :`df_save`
+
+		**WARNING**: if you provide an output path, then the mapping won't be lazy anymore, the 
+		result triple DF will actually be materialised and saved.
+
+		TODO: the save functionality was initially in `GenericTabFileMapper`, move the pertinent tests
+		under this class's tests.
+		"""
+
+		triple_df = self._map ( df )
+		if not out_path: return triple_df
+
+		log.info ( f"Saving mapped tab file to \"{out_path}\"" )
+		df_save ( triple_df, out_path )
+
 
 	def with_mapper_name ( self, mapper_name: str ) -> "SparkDataFrameMapperBase":
 		"""
@@ -298,7 +321,7 @@ class SparkDataFrameMapper ( SparkDataFrameMapperBase ):
 		self._row_mapper_keys = None
 
 
-	def map ( self, df: DataFrame ) -> DataFrame:
+	def _map ( self, df: DataFrame ) -> DataFrame:
 		def map_pandas_batch ( pdf_iter: Iterator [ pd.DataFrame ] ) -> Iterator [ pd.DataFrame ]:
 			"""
 			Maps batches of Pandas data frames (coming from the original DF) into batches of 
@@ -591,23 +614,15 @@ class GenericTabFileMapper:
 
 		- file_path: the path to the input tabular file (CSV/TSV). Passed to :fun:`df_load_from_tab_file`.
 
-		- out_path: if given, the mapped data frame is saved (as parquet) using the checkpointing	functions 
+		- out_path: if given, the mapped data frame is saved (eg, as parquet) using the checkpointing	functions 
 		  in `ketl.spark.utils`, as an intermediate that allows for building incremental workflows in Snakemake or
-			similar frameworks. 
+			similar frameworks. This is achieved by calling `self.data_frame_mapper.map()`
 		"""
 
 		df = self.tab_file_loader.load_data_frame ( spark, file_path )
 
 		# And eventually do the mapping
-		triple_df = self.data_frame_mapper.map ( df )
-
-		# Save to file if required
-		if out_path:
-			# Remember, we can't log much more than this, since most of Spark is declarative and things
-			# really happen only upon an actual action like this
-			#
-			log.info ( f"Saving mapped tab file to \"{out_path}\"" )
-			df_save ( triple_df, out_path )
+		triple_df = self.data_frame_mapper.map ( df, out_path )
 		
 		return triple_df
 	# /map
