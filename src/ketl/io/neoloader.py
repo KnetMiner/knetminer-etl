@@ -116,9 +116,10 @@ class NeoLoaderPropertyConfig:
 	to the predefined modes.
 	"""
 
-	multi_value_string_joiner: str|None = ". "
+	multi_value_string_joiner: str|None = None
 	"""
 	When `multi_value_mode` is `STRING_JOIN`, this is used as string separator between joined values.
+	If `None`, a default ". " is used.
 	"""
 
 	@cache
@@ -135,8 +136,6 @@ class NeoLoaderPropertyConfig:
 		if self.multi_value_mode == NeoLoaderPropertyConfig.MultiValueMode.AUTO:
 			return _multi_value_processor_auto
 		if self.multi_value_mode == NeoLoaderPropertyConfig.MultiValueMode.STRING_JOIN:
-			joiner = self.multi_value_string_joiner
-			if joiner is None: joiner = ". "
 			return lambda pg_values, pg_element_id, pg_property_id: \
 				_multi_value_processor_string_joiner ( 
 					pg_values, pg_element_id, pg_property_id, self.multi_value_string_joiner 
@@ -208,14 +207,15 @@ def _multi_value_processor_auto ( pg_values: list[T], pg_element_id: str, pg_pro
 	# Remove duplicates, and convert to list for better Neo4j compatibility.
 	return list ( set ( pg_values ) )
 
-def _multi_value_processor_string_joiner ( pg_values: list[T], pg_element_id: str, pg_property_id: str, joiner: str ) -> str:
+def _multi_value_processor_string_joiner ( pg_values: list[T], pg_element_id: str, pg_property_id: str, joiner: str|None = None ) -> str:
 	"""
 	Multi Value mode processor for the STRING_JOINER mode. This is used in 
 	:attr:`NodeLoaderPropertyConfig.multi_value_mode`, see there for details.
 	"""
 	if len ( pg_values ) == 1: return str ( pg_values [ 0 ] )
 	pg_values = [ str ( v ) for v in set( pg_values ) ]
-	return ', '.join ( pg_values )
+	if joiner is None: joiner = ". "
+	return joiner.join ( pg_values )
 
 
 @dataclass
