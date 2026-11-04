@@ -20,6 +20,10 @@ Next steps for the KnetMiner base pipeline:
 * [ ] Compression options: output of `pg_df_2_pg_jsonl()`, input of `NeoLoader`
 
 ## NeoLoader
+* [ ] `NeoLoaderPropertyConfig.MultiValueMode` (ie, how to deal with multi-value properties)
+  * generalise this into `multi_value_prop_processor ( list ) -> list[Any]|Any`
+	* Convert current modes into corresponding functions
+	* Add "String merging mode", ie, when a value is a list of strings, join them.
 * [X] More logs
 * [X] Edges
 * [ ] Actual batching (and performance)

@@ -23,6 +23,8 @@ with a DF as source.
 import argparse
 import asyncio
 import concurrent
+from functools import cache
+import importlib
 import json
 import logging
 import os
@@ -34,7 +36,7 @@ from datetime import datetime, timedelta
 from enum import StrEnum
 from itertools import islice
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Iterable, TextIO
+from typing import Any, Awaitable, Callable, Iterable, TextIO, TypeVar
 
 import neo4j
 import tenacity
@@ -46,7 +48,7 @@ from ketl.config import load_config
 log = logging.getLogger ( __name__ )
 
 
-@dataclass ()
+@dataclass ( frozen = True )
 class NeoLoaderPropertyConfig:
 	"""
 	A container of configuration options for a PG property, which is used by the NeoLoader to 
@@ -76,8 +78,9 @@ class NeoLoaderPropertyConfig:
 		
 		MULTIPLE = "multiple"
 		"""
-		The property is always multiple-values, all the values are converted into a set or list, even
-		for singletons.
+		The property is always multiple-values, all the values are converted into a list without duplicates, 
+		and with arbitrary order. We call that set/list. In this mode, the even single values become
+		singleton lists. 
 		"""
 
 		AUTO = "auto"
@@ -90,7 +93,46 @@ class NeoLoaderPropertyConfig:
 		in the target database, and your semantics is rarely like this.
 		"""
 
-	multi_value_mode: MultiValueMode = MultiValueMode.AUTO
+	multi_value_mode: MultiValueMode | str | Callable[[list[Any], str, str], Any] = MultiValueMode.AUTO
+	"""
+	How to deal with multiple values. This is one of 
+	- a predefined constants in `MultiValueMode`, 
+	- a function that gets a set list (ie, a list without duplicates and in arbitrary order), a PG element ID 
+	and a PG property ID and returns the value to be saved in Neo4j (which can be a list or not). 
+	Note that when such a function returns None, nothing is saved in the DB.
+	- A string containing the FQN of a function (eg, `"myext.mymodule.my_multi_value_processor"`) that 
+	behaves as above. This way of specifying a processor is offered to allow for YAML-based configurations
+	or alike.
+
+	For examples of such functions, see below, where we assign internal functions corresponding
+	to the predefined modes.
+	"""
+
+	@cache
+	def get_multi_value_processor ( self ) -> Callable[[list[Any], str, str], Any]:
+		"""
+		Returns a function that corresponds to the value of `multi_value_mode`. If this
+		is a custom function, resolves it.
+		"""
+		# Predefined cases
+		if self.multi_value_mode == NeoLoaderPropertyConfig.MultiValueMode.SINGLE:
+			return _multi_value_processor_single
+		if self.multi_value_mode == NeoLoaderPropertyConfig.MultiValueMode.MULTIPLE:
+			return _multi_value_processor_multi
+		if self.multi_value_mode == NeoLoaderPropertyConfig.MultiValueMode.AUTO:
+			return _multi_value_processor_auto
+		if isinstance ( self.multi_value_mode, str ):
+			# Custom processor, Let's get the function
+			try:
+				module_fqn, processor_name = self.multi_value_mode.rsplit ( ".", 1 )
+				module = importlib.import_module ( module_fqn )
+				processor = getattr ( module, processor_name )
+				return processor
+			except (ModuleNotFoundError, AttributeError) as ex:
+				raise ValueError ( f"Could not resolve multi_value_mode function \"{self.multi_value_mode}\"", ex )
+		# Finally, let's assume it's the right callable, errors will come up later, upon invocation
+		return self.multi_value_mode
+
 	
 	@classmethod
 	def from_config ( cls, config: dict ) -> "NeoLoaderPropertyConfig":
@@ -111,9 +153,41 @@ class NeoLoaderPropertyConfig:
 		params = config.copy ()
 
 		if "multi_value_mode" in params:
-			params [ "multi_value_mode" ] = cls.MultiValueMode ( params [ "multi_value_mode" ] )
+			multi_value_cfg_val = params [ "multi_value_mode" ]
+			if multi_value_cfg_val in cls.MultiValueMode:
+				multi_value_cfg_val = cls.MultiValueMode ( multi_value_cfg_val )
+			params [ "multi_value_mode" ] = multi_value_cfg_val
 
 		return cls ( **params )
+
+T = TypeVar('T')
+def _multi_value_processor_single ( pg_values: list[T], pg_element_id: str, pg_property_id: str ) -> T:
+	"""
+	Multi Value mode processor for the SINGLE mode. This is used in 
+	:attr:`NodeLoaderPropertyConfig.multi_value_mode`, see there for details.
+	"""
+	if len ( pg_values ) == 1: return pg_values [ 0 ]
+	# > 1 case, it's invalid in SINGLE mode
+	raise ValueError ( f"pg_jsonl_neo_loader(), multiple values aren't allowed for property '{pg_property_id}' in element '{pg_element_id}'" )
+
+def _multi_value_processor_multi ( pg_values: list[T], pg_element_id: str, pg_property_id: str ) -> list[T]:
+	"""
+	Multi Value mode processor for the SINGLE mode. This is used in 
+	:attr:`NodeLoaderPropertyConfig.multi_value_mode`, see there for details.
+	"""
+	if len ( pg_values ) == 1: return pg_values
+	# Remove duplicates, and convert to list for better Neo4j compatibility.
+	return list ( set ( pg_values ) )
+
+def _multi_value_processor_auto ( pg_values: list[T], pg_element_id: str, pg_property_id: str ) -> list[T]|T:
+	"""
+	Multi Value mode processor for the AUTO mode. This is used in 
+	:attr:`NodeLoaderPropertyConfig.multi_value_mode`, see there for details.
+	"""
+	if len ( pg_values ) == 1: return pg_values [ 0 ]
+	# Remove duplicates, and convert to list for better Neo4j compatibility.
+	return list ( set ( pg_values ) )
+
 
 @dataclass
 class NeoLoaderConfig:
@@ -798,22 +872,19 @@ def _parse_pg_elem_property (
 	if len ( pg_value ) == 0: return None
 
 	prop_config = config.get_property_config ( prop_id )
-	result = None
 
-	if len ( pg_value ) == 1:
-		if prop_config.multi_value_mode in ( NeoLoaderPropertyConfig.MultiValueMode.SINGLE, NeoLoaderPropertyConfig.MultiValueMode.AUTO ):
-			result = pg_value [ 0 ]
-		else:
-			# it's multiple mode
-			result = pg_value
-	else:
-		# > 1 case
-		if prop_config.multi_value_mode == NeoLoaderPropertyConfig.MultiValueMode.SINGLE:
-			raise ValueError ( f"pg_jsonl_neo_loader(), multiple values aren't allowed for property '{prop_id}' in element '{elem_id}'" )
-		# else, we're in auto or multiple
-		result = list ( set ( pg_value ) ) # Remove duplicates, and convert to list for better Neo4j compatibility.
+	# Massage it with the multi-value processor
+	try:
+		multi_val_processor = prop_config.get_multi_value_processor ()
+		result = multi_val_processor ( pg_value, elem_id, prop_id )
+		return result	
+	except ValueError as ex:
+		raise
+	except Exception as ex:
+		raise RuntimeError ( 
+			f"Error processing property '{prop_id}' in element '{elem_id}' with value {pg_value}: {ex}", ex 
+		)
 
-	return result
 
 if __name__ == "__main__":
 	# Of course, we call the CLI loader when the module is invoked, so you can do:
