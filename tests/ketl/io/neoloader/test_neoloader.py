@@ -250,15 +250,14 @@ def test_multi_value_mode_single ( pg_data: tuple[ list[ dict ], list[ dict ] ],
 	"""
 
 	property_ids = [ "source", "hasChromosomeBegin", "hasChromosomeEnd" ]	
+	config = create_multiple_multi_value_config ()
+	for prop_id in property_ids:
+		config.property_configs[ prop_id ] = NeoLoaderPropertyConfig ( multi_value_mode = NeoLoaderPropertyConfig.MultiValueMode.SINGLE )
 
 	pg_nodes = pg_data[ 0 ]
 	pg_nodes_str = [ json.dumps ( node ) for node in pg_nodes ]
 
 	async_neo_driver: neo4j.AsyncDriver = create_async_neo_driver ( neo4j_container )
-
-	config = create_multiple_multi_value_config ()
-	for prop_id in property_ids:
-		config.property_configs[ prop_id ] = NeoLoaderPropertyConfig ( multi_value_mode = NeoLoaderPropertyConfig.MultiValueMode.SINGLE )
 
 	n_nodes = pg_jsonl_neo_loader (
 		pg_jsonl_source = pg_nodes_str,
@@ -383,6 +382,38 @@ def test_multi_value_mode_auto ( pg_data: tuple[ list[ dict ], list[ dict ] ], n
 				else:
 					assert_that ( set ( db_val ), f"Element {id} has a list value for property '{prop_key}' in the database" )\
 						.is_equal_to ( set ( prop_values ) )
+
+
+@pytest.mark.integration
+def test_multi_value_mode_string_join ( pg_data: tuple[ list[ dict ], list[ dict ] ], neo4j_container: Neo4jContainer, neo_driver: neo4j.Driver ):
+	"""
+	Tests that link_notes are joined into a single string, with the " / " separator
+	"""
+	property_id = "link notes"
+	config = create_multiple_multi_value_config ()
+	config.property_configs[ property_id ] = NeoLoaderPropertyConfig ( 
+		multi_value_mode = NeoLoaderPropertyConfig.MultiValueMode.STRING_JOIN,
+		multi_value_string_joiner = " / "
+	)
+
+	pg_nodes, pg_edges = pg_data
+	pg_nodes_str = "\n".join ( json.dumps ( node ) for node in pg_nodes )
+	pg_edges_str = "\n".join ( json.dumps ( edge ) for edge in pg_edges )
+	pg_all_str = pg_nodes_str + "\n" + pg_edges_str
+
+	async_neo_driver: neo4j.AsyncDriver = create_async_neo_driver ( neo4j_container )
+
+	n_elements = pg_jsonl_neo_loader (
+		pg_jsonl_source = pg_all_str,
+		neo_driver = async_neo_driver,
+		do_nodes = True, do_edges = True,
+		config = config
+	)
+
+	assert_that ( n_elements, "Return value from the loader is correct" ).is_equal_to ( len ( pg_nodes ) + len ( pg_edges ) )
+
+
+
 
 
 @pytest.mark.integration

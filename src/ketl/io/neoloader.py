@@ -93,6 +93,14 @@ class NeoLoaderPropertyConfig:
 		in the target database, and your semantics is rarely like this.
 		"""
 
+		STRING_JOIN = "string_join"
+		"""
+		In this mode, the values from a multi-value property are turned into strings (via `str()`) and then
+		joined into a single string. This might be useful for properties like `comment` or `tags`
+		The attribute `multi_value_string_joiner` of `NeoLoaderPropertyConfig` can be used to 
+		establish the string separator between joined values.
+		"""
+
 	multi_value_mode: MultiValueMode | str | Callable[[list[Any], str, str], Any] = MultiValueMode.AUTO
 	"""
 	How to deal with multiple values. This is one of 
@@ -108,6 +116,11 @@ class NeoLoaderPropertyConfig:
 	to the predefined modes.
 	"""
 
+	multi_value_string_joiner: str|None = ". "
+	"""
+	When `multi_value_mode` is `STRING_JOIN`, this is used as string separator between joined values.
+	"""
+
 	@cache
 	def get_multi_value_processor ( self ) -> Callable[[list[Any], str, str], Any]:
 		"""
@@ -121,6 +134,13 @@ class NeoLoaderPropertyConfig:
 			return _multi_value_processor_multi
 		if self.multi_value_mode == NeoLoaderPropertyConfig.MultiValueMode.AUTO:
 			return _multi_value_processor_auto
+		if self.multi_value_mode == NeoLoaderPropertyConfig.MultiValueMode.STRING_JOIN:
+			joiner = self.multi_value_string_joiner
+			if joiner is None: joiner = ". "
+			return lambda pg_values, pg_element_id, pg_property_id: \
+				_multi_value_processor_string_joiner ( 
+					pg_values, pg_element_id, pg_property_id, self.multi_value_string_joiner 
+			)
 		if isinstance ( self.multi_value_mode, str ):
 			# Custom processor, Let's get the function
 			try:
@@ -187,6 +207,15 @@ def _multi_value_processor_auto ( pg_values: list[T], pg_element_id: str, pg_pro
 	if len ( pg_values ) == 1: return pg_values [ 0 ]
 	# Remove duplicates, and convert to list for better Neo4j compatibility.
 	return list ( set ( pg_values ) )
+
+def _multi_value_processor_string_joiner ( pg_values: list[T], pg_element_id: str, pg_property_id: str, joiner: str ) -> str:
+	"""
+	Multi Value mode processor for the STRING_JOINER mode. This is used in 
+	:attr:`NodeLoaderPropertyConfig.multi_value_mode`, see there for details.
+	"""
+	if len ( pg_values ) == 1: return str ( pg_values [ 0 ] )
+	pg_values = [ str ( v ) for v in set( pg_values ) ]
+	return ', '.join ( pg_values )
 
 
 @dataclass
