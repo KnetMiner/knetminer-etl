@@ -390,10 +390,11 @@ def test_multi_value_mode_string_join ( pg_data: tuple[ list[ dict ], list[ dict
 	Tests that link_notes are joined into a single string, with the " / " separator
 	"""
 	property_id = "link notes"
+	joiner = " / "
 	config = create_multiple_multi_value_config ()
 	config.property_configs[ property_id ] = NeoLoaderPropertyConfig ( 
-		multi_value_mode = NeoLoaderPropertyConfig.MultiValueMode.STRING_JOIN,
-		multi_value_string_joiner = " / "
+		multi_value_mode = NeoLoaderPropertyConfig.MultiValueMode.JOIN_STRINGS,
+		multi_value_string_joiner = joiner
 	)
 
 	pg_nodes, pg_edges = pg_data
@@ -412,8 +413,34 @@ def test_multi_value_mode_string_join ( pg_data: tuple[ list[ dict ], list[ dict
 
 	assert_that ( n_elements, "Return value from the loader is correct" ).is_equal_to ( len ( pg_nodes ) + len ( pg_edges ) )
 
+	# Verify via Cypher that 'link notes' is stored as a single joined string
+	# Only encodes-protein edges have this property
+	edges_with_notes = [ e for e in pg_edges if property_id in e[ "properties" ] ]
+	assert_that ( edges_with_notes, "Test data has edges with the tested property" ).is_not_empty ()
 
+	for edge in edges_with_notes:
+		edge_id = edge[ "id" ]
+		pg_values = edge[ "properties" ][ property_id ]
+		cypher = f"""
+			MATCH ()-[e:`encodes-protein` {{ id: '{edge_id}' }}]->()
+			RETURN e.`{property_id}` AS notes
+		"""
+		with neo_driver.session() as session:
+			record = session.run ( cypher ).single ()
+			assert_that ( record, f"Edge {edge_id} is found in the database" ).is_not_none ()
+			db_val = record[ "notes" ]
 
+		assert_that ( db_val, f"Edge {edge_id} has '{property_id}' as a string" ).is_instance_of ( str )
+		if len ( pg_values ) == 1:
+			expected = str ( pg_values[ 0 ] )
+			assert_that ( db_val, f"Edge {edge_id} has the correct '{property_id}'" ).is_equal_to ( expected )
+		else:
+			# Joining order isn't deterministic (the loader de-duplicates via set()), so we need to 
+			# split back the DB string and see if we get the same set of values
+			split_db_vals = set ( db_val.split ( joiner ) )
+			expected_vals = set ( str ( v ) for v in pg_values )
+			assert_that ( split_db_vals, f"Edge {edge_id} has the correct joined '{property_id}'" )\
+				.is_equal_to ( expected_vals )
 
 
 @pytest.mark.integration

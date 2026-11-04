@@ -93,7 +93,7 @@ class NeoLoaderPropertyConfig:
 		in the target database, and your semantics is rarely like this.
 		"""
 
-		STRING_JOIN = "string_join"
+		JOIN_STRINGS = "string_join"
 		"""
 		In this mode, the values from a multi-value property are turned into strings (via `str()`) and then
 		joined into a single string. This might be useful for properties like `comment` or `tags`
@@ -135,7 +135,7 @@ class NeoLoaderPropertyConfig:
 			return _multi_value_processor_multi
 		if self.multi_value_mode == NeoLoaderPropertyConfig.MultiValueMode.AUTO:
 			return _multi_value_processor_auto
-		if self.multi_value_mode == NeoLoaderPropertyConfig.MultiValueMode.STRING_JOIN:
+		if self.multi_value_mode == NeoLoaderPropertyConfig.MultiValueMode.JOIN_STRINGS:
 			return lambda pg_values, pg_element_id, pg_property_id: \
 				_multi_value_processor_string_joiner ( 
 					pg_values, pg_element_id, pg_property_id, self.multi_value_string_joiner 
@@ -209,7 +209,7 @@ def _multi_value_processor_auto ( pg_values: list[T], pg_element_id: str, pg_pro
 
 def _multi_value_processor_string_joiner ( pg_values: list[T], pg_element_id: str, pg_property_id: str, joiner: str|None = None ) -> str:
 	"""
-	Multi Value mode processor for the STRING_JOINER mode. This is used in 
+	Multi Value mode processor for the JOIN_STRINGS mode. This is used in 
 	:attr:`NodeLoaderPropertyConfig.multi_value_mode`, see there for details.
 	"""
 	if len ( pg_values ) == 1: return str ( pg_values [ 0 ] )
