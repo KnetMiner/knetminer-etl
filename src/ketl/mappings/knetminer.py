@@ -69,45 +69,22 @@ def data_source_triple_mapper ( data_source: str ) -> ConstantTripleMapper:
 	return ConstantTripleMapper ( property = "dataSources", constant_value = data_source )
 
 
-# TODO: remove, it's the old version that creates a separated node
-def _create_accession_tabmapper ( 
-	acc_source_mapper: str|RowValueMapper, acc_mapper: str|RowValueMapper,
-	source_id_mapper: RowValueMapper
-) -> tuple[SparkDataFrameMapper, SparkDataFrameMapper]:	
+def NCBITaxIDs ( StrEnum ):
 	"""
-	Makes a pair of :class:`SparkDataFrameMapper`(s), one that maps accession-related data to
-	an Accession node, the other that maps to the relationship linking
-	the owner node to the accession.
-
-	## Parameters
-	- `acc_source_mapper`: the mapper for the accession source. If it's a string, it will be the 
-	  column ID where to take the source value from. If it's a :class:`RowValueMapper`, 
-		it will use the mapper to gather the source value. If it's a string with the '!' prefix
-		(eg, "!ENSEMBL"), it will be used as a constant value for the source.
-	- `acc_mapper`: the mapper for the accession. Similarly to `acc_source_mapper`, it can 
-		be a string (column ID), a :class:`RowValueMapper`, or a constant value with the '!' prefix.
-	- `source_id_mapper`: the ID mapper of the source node, to be used to create relationships that 
-	  link the accession nodes to their respective source nodes.
-
-	## Returns
-	A tuple of two :class:`SparkDataFrameMapper`(s), the first creates Accession Nodes, the second
-	creates linking triples between values returned by `source_id_mapper` and accessions.
+	Enum for the NCBI Taxonomy IDs of the species used in KnetMiner.
 	"""
+	ARABIDOPSIS = "3702"
+	WHEAT = "4565"
 
-# TODO: remove, it's the old version that creates a separated node
-def _add_accession_tabmapper ( 
-	df_mapper: SparkDataFrameMapper, 
-	acc_source_mapper: str|RowValueMapper, acc_mapper: str|RowValueMapper,
-	source_id_mapper: RowValueMapper
-) -> SparkDataFrameMapperBase:
+
+@cache
+def tax_id_triple_mapper ( tax_id: str ) -> ConstantTripleMapper:
 	"""
-	Helper to add accession mapping to an existing :class:`SparkDataFrameMapper`.
+	Creates a constant triple mapper that creates the taxId property for a node, ie, 
+	something like: `$nodeId taxId "3702"`
 
-	## Returns
+	Returned values are cached.
 
-	A :class:`SparkDataFrameMapperBase` that joins the original tab mapper with the two 
-	accession-related mappers obtained by :func:`_create_accession_tabmapper()`.
+	See :class:`NCBITaxIDs` for the IDs of the species commonly used in KnetMiner.
 	"""
-	acc_tbmap, acc_link_tbmap = _create_accession_tabmapper ( acc_source_mapper, acc_mapper, source_id_mapper )
-	all_mappers = tbhelpers.df_mappers_chain ( df_mapper, acc_tbmap, acc_link_tbmap )
-	return all_mappers
+	return ConstantTripleMapper ( property = "taxId", constant_value = tax_id )
