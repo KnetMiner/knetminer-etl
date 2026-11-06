@@ -2,6 +2,8 @@
 Mappers and helpers for common types used in KnetMiner.
 """
 
+from enum import StrEnum
+
 from ketl.core import ConstantTripleMapper
 from ketl.tabmap.core import ColumnValueMapper, RowTripleMapper, RowValueMapper, SparkDataFrameMapper, SparkDataFrameMapperBase
 import ketl.tabmap.helpers as tbhelpers
@@ -69,7 +71,7 @@ def data_source_triple_mapper ( data_source: str ) -> ConstantTripleMapper:
 	return ConstantTripleMapper ( property = "dataSources", constant_value = data_source )
 
 
-def NCBITaxIDs ( StrEnum ):
+class NCBITaxIDs ( StrEnum ):
 	"""
 	Enum for the NCBI Taxonomy IDs of the species used in KnetMiner.
 	"""
