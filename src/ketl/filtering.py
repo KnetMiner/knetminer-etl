@@ -3,7 +3,7 @@ from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 
 def df_filter_unlinked_rows ( 
-	target_df: DataFrame, reference_df: DataFrame, join_cols_or_expr
+	target_df: DataFrame, reference_df: DataFrame, join_cols_or_expr: str | Sequence[str]
 ) -> DataFrame:
 	"""
 	Filters the target dataframe `target_df`, keeping the rows that have an existing reference in the reference
@@ -21,6 +21,8 @@ def df_filter_unlinked_rows (
   ## Returns 
 	A new `DataFrame` which represents `target_df` minus the rows without references in `reference_df`.
 	The operation is lazy, nothing really happens until the target is executed/consumed.
+
+	TODO: this is used in the pilot project, to be tested here.
 	"""
 
 	if not isinstance ( join_cols_or_expr, str ):
