@@ -165,10 +165,10 @@ def pg_df_2_pg_jsonl (
 		"""
 
 		# pg_df_or_path is now a DF
+		default_converter = JSONBasedValueConverter ()
 		for row in pg_df_or_path.toLocalIterator ():
 			# Unserialize property values
 			properties = {}
-			default_converter = JSONBasedValueConverter ()
 			for k, vlist in row.properties.items():
 				converter = value_converters.get ( k, default_converter )
 				properties [ k ] = [ converter.unserialize ( v ) for v in vlist ]

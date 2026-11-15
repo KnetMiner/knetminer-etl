@@ -106,7 +106,7 @@ def df_load ( path_or_df: str | DataFrame, spark: SparkSession ) -> DataFrame:
 		)
 
 	path = df_path ( path_or_df )
-	log.info ( f"Loading DataFrame from {path}" )
+	log.info ( f"Loading DataFrame from \"{path}\"" )
 	df = spark.read.parquet ( path )		
 	log.info ( f"DataFrame loaded" )
 
