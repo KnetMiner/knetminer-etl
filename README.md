@@ -18,7 +18,7 @@ TODO: write much more! :-)
 * Python
 * Poetry
 * Apache Spark (and Java)
-  * TODO: for now, 
+  * The current project installs Spark as a dependency. Java has to be installed separately, and version 21 is required (pyspark 4.1 doesn't work with 25).
 * Docker (for Neo4j-related tests that are based on testcontainers)
 * Snakemake
 	* ETL tools can work with your own scripts or, potentially, any workflow manager. We ship them with test and examples based on Snakemake.
